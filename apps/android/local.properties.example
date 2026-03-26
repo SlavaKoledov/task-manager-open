@@ -1,0 +1,3 @@
+# Example only. Copy to `local.properties` if Android Studio does not create it automatically.
+# The real `local.properties` is machine-specific and should stay untracked.
+sdk.dir=/path/to/Android/Sdk

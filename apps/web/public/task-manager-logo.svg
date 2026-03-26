@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(224)">
+      <stop stop-color="#BDA8FF" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#2B2635" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="frame" x1="96" y1="104" x2="428" y2="424" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6E3BFF"/>
+      <stop offset="1" stop-color="#4319B6"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="130" y1="144" x2="386" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CDBEFF"/>
+      <stop offset="1" stop-color="#6A42DB"/>
+    </linearGradient>
+    <linearGradient id="check" x1="188" y1="220" x2="336" y2="356" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F1FF"/>
+      <stop offset="1" stop-color="#E1D6FF"/>
+    </linearGradient>
+    <filter id="soft-glow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="48"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="#2B2635"/>
+  <g filter="url(#soft-glow)">
+    <circle cx="256" cy="256" r="136" fill="url(#glow)"/>
+  </g>
+  <rect x="110" y="112" width="292" height="292" rx="58" fill="url(#frame)" stroke="#2E135D" stroke-width="4"/>
+  <rect x="140" y="142" width="232" height="232" rx="44" fill="url(#panel)" fill-opacity="0.92" stroke="#35166E" stroke-width="3"/>
+  <path d="M183 260.5L240.5 318L334 205" stroke="url(#check)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,297 @@
+import { addDays, getLocalDateString, parseLocalDateString } from "@/lib/date";
+import type { TaskItem, TaskRepeat } from "@/lib/types";
+
+export type CalendarDay = {
+  date: Date;
+  dateString: string;
+  isCurrentMonth: boolean;
+};
+
+export type CalendarRange = {
+  start: Date;
+  end: Date;
+  startDateString: string;
+  endDateString: string;
+};
+
+export type TaskOccurrence = {
+  task: TaskItem;
+  date: Date;
+  dateString: string;
+  isRecurring: boolean;
+};
+
+export const RECURRING_PREVIEW_LIMIT = 12;
+const CALENDAR_MONTH_GRID_DAYS = 42;
+const CALENDAR_WEEK_DAYS = 7;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+export function getCalendarMonthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+export function addCalendarMonths(date: Date, offsetMonths: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + offsetMonths, 1);
+}
+
+export function getCalendarWeekStart(date: Date): Date {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const startOffset = (start.getDay() + 6) % 7;
+  return addDays(start, -startOffset);
+}
+
+export function getCalendarMonthRange(monthDate: Date): CalendarRange {
+  const monthStart = getCalendarMonthStart(monthDate);
+  const start = getCalendarWeekStart(monthStart);
+  const end = addDays(start, CALENDAR_MONTH_GRID_DAYS - 1);
+
+  return {
+    start,
+    end,
+    startDateString: getLocalDateString(start),
+    endDateString: getLocalDateString(end),
+  };
+}
+
+export function getCalendarWeekRange(date: Date): CalendarRange {
+  const start = getCalendarWeekStart(date);
+  const end = addDays(start, CALENDAR_WEEK_DAYS - 1);
+
+  return {
+    start,
+    end,
+    startDateString: getLocalDateString(start),
+    endDateString: getLocalDateString(end),
+  };
+}
+
+export function getCalendarDays(monthDate: Date): CalendarDay[] {
+  const monthStart = getCalendarMonthStart(monthDate);
+  const { start } = getCalendarMonthRange(monthDate);
+
+  return Array.from({ length: CALENDAR_MONTH_GRID_DAYS }, (_, index) => {
+    const date = addDays(start, index);
+
+    return {
+      date,
+      dateString: getLocalDateString(date),
+      isCurrentMonth: date.getMonth() === monthStart.getMonth(),
+    };
+  });
+}
+
+export function getCalendarWeekDays(date: Date): CalendarDay[] {
+  const weekStart = getCalendarWeekStart(date);
+
+  return Array.from({ length: CALENDAR_WEEK_DAYS }, (_, index) => {
+    const day = addDays(weekStart, index);
+
+    return {
+      date: day,
+      dateString: getLocalDateString(day),
+      isCurrentMonth: day.getMonth() === date.getMonth(),
+    };
+  });
+}
+
+function getLastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function resolveNextMonthlyDate(currentDate: Date): Date {
+  const nextMonthIndex = currentDate.getMonth() + 1;
+  const nextMonthYear = currentDate.getFullYear() + Math.floor(nextMonthIndex / 12);
+  const nextMonth = nextMonthIndex % 12;
+  const nextDay = Math.min(currentDate.getDate(), getLastDayOfMonth(nextMonthYear, nextMonth));
+
+  return new Date(nextMonthYear, nextMonth, nextDay);
+}
+
+function resolveNextYearlyDate(currentDate: Date): Date {
+  const nextYear = currentDate.getFullYear() + 1;
+  const month = currentDate.getMonth();
+  const nextDay = Math.min(currentDate.getDate(), getLastDayOfMonth(nextYear, month));
+
+  return new Date(nextYear, month, nextDay);
+}
+
+export function resolveNextRecurringPreviewDate(repeat: Exclude<TaskRepeat, "none">, currentDate: Date): Date {
+  if (repeat === "daily") {
+    return addDays(currentDate, 1);
+  }
+
+  if (repeat === "weekly") {
+    return addDays(currentDate, 7);
+  }
+
+  if (repeat === "monthly") {
+    return resolveNextMonthlyDate(currentDate);
+  }
+
+  return resolveNextYearlyDate(currentDate);
+}
+
+export function buildRecurringPreviewDates(
+  dueDate: string,
+  repeat: TaskRepeat,
+  repeatUntil?: string,
+  limit = RECURRING_PREVIEW_LIMIT,
+): string[] {
+  if (!dueDate || repeat === "none" || limit <= 0) {
+    return [];
+  }
+
+  const baseDate = parseLocalDateString(dueDate);
+  const repeatUntilDate = repeatUntil ? parseLocalDateString(repeatUntil) : null;
+
+  if (!baseDate) {
+    return [];
+  }
+
+  const previewDates: string[] = [];
+  let cursor = baseDate;
+
+  for (let index = 0; index < limit; index += 1) {
+    cursor = resolveNextRecurringPreviewDate(repeat, cursor);
+
+    if (repeatUntilDate && cursor > repeatUntilDate) {
+      break;
+    }
+
+    previewDates.push(getLocalDateString(cursor));
+  }
+
+  return previewDates;
+}
+
+export function buildVisibleRecurringPreviewDateSet(
+  previewDates: string[],
+  calendarDays: CalendarDay[],
+): Set<string> {
+  const calendarDateStrings = new Set(calendarDays.map((day) => day.dateString));
+
+  return new Set(previewDates.filter((dateString) => calendarDateStrings.has(dateString)));
+}
+
+function differenceInLocalDays(left: Date, right: Date): number {
+  return Math.floor((left.getTime() - right.getTime()) / DAY_IN_MS);
+}
+
+function getFirstRecurringCandidate(baseDate: Date, repeat: Exclude<TaskRepeat, "none">, rangeStart: Date): Date {
+  const firstRecurringDate = resolveNextRecurringPreviewDate(repeat, baseDate);
+
+  if (firstRecurringDate >= rangeStart) {
+    return firstRecurringDate;
+  }
+
+  if (repeat === "daily") {
+    return addDays(firstRecurringDate, Math.max(0, differenceInLocalDays(rangeStart, firstRecurringDate)));
+  }
+
+  if (repeat === "weekly") {
+    const diffDays = Math.max(0, differenceInLocalDays(rangeStart, firstRecurringDate));
+    return addDays(firstRecurringDate, Math.ceil(diffDays / 7) * 7);
+  }
+
+  let cursor = firstRecurringDate;
+
+  while (cursor < rangeStart) {
+    cursor = resolveNextRecurringPreviewDate(repeat, cursor);
+  }
+
+  return cursor;
+}
+
+export function buildTaskOccurrencesInRange(tasks: TaskItem[], range: CalendarRange): TaskOccurrence[] {
+  const occurrences: TaskOccurrence[] = [];
+
+  for (const task of tasks) {
+    if (!task.due_date) {
+      continue;
+    }
+
+    const baseDate = parseLocalDateString(task.due_date);
+    if (!baseDate) {
+      continue;
+    }
+
+    if (baseDate >= range.start && baseDate <= range.end) {
+      occurrences.push({
+        task,
+        date: baseDate,
+        dateString: task.due_date,
+        isRecurring: false,
+      });
+    }
+
+    if (task.repeat === "none") {
+      continue;
+    }
+
+    const repeatUntilDate = task.repeat_until ? parseLocalDateString(task.repeat_until) : null;
+    let cursor = getFirstRecurringCandidate(baseDate, task.repeat, range.start);
+
+    while (cursor <= range.end) {
+      if (repeatUntilDate && cursor > repeatUntilDate) {
+        break;
+      }
+
+      occurrences.push({
+        task,
+        date: cursor,
+        dateString: getLocalDateString(cursor),
+        isRecurring: true,
+      });
+
+      cursor = resolveNextRecurringPreviewDate(task.repeat, cursor);
+    }
+  }
+
+  return occurrences.sort((left, right) => {
+    const dateDelta = left.dateString.localeCompare(right.dateString);
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+
+    return compareTaskOccurrences(left, right);
+  });
+}
+
+export function groupTaskOccurrencesByDate(occurrences: TaskOccurrence[]): Map<string, TaskOccurrence[]> {
+  const occurrencesByDate = new Map<string, TaskOccurrence[]>();
+
+  for (const occurrence of occurrences) {
+    const currentOccurrences = occurrencesByDate.get(occurrence.dateString);
+    if (currentOccurrences) {
+      currentOccurrences.push(occurrence);
+    } else {
+      occurrencesByDate.set(occurrence.dateString, [occurrence]);
+    }
+  }
+
+  return occurrencesByDate;
+}
+
+export function compareTaskOccurrences(left: TaskOccurrence, right: TaskOccurrence): number {
+  const leftReminder = left.task.reminder_time ?? "";
+  const rightReminder = right.task.reminder_time ?? "";
+
+  if (leftReminder && !rightReminder) {
+    return -1;
+  }
+
+  if (!leftReminder && rightReminder) {
+    return 1;
+  }
+
+  if (leftReminder !== rightReminder) {
+    return leftReminder.localeCompare(rightReminder);
+  }
+
+  const titleDelta = left.task.title.localeCompare(right.task.title);
+  if (titleDelta !== 0) {
+    return titleDelta;
+  }
+
+  return left.task.id - right.task.id;
+}

@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --background: 36 23% 96%;
+  --foreground: 220 18% 14%;
+  --card: 42 22% 99%;
+  --card-foreground: 220 18% 14%;
+  --primary: 214 84% 56%;
+  --primary-foreground: 210 40% 98%;
+  --muted: 32 18% 90%;
+  --muted-foreground: 220 10% 40%;
+  --border: 27 15% 82%;
+  --input: 27 15% 82%;
+  --ring: 214 84% 56%;
+  --radius: 1rem;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: 220 16% 8%;
+  --foreground: 30 20% 96%;
+  --card: 220 18% 11%;
+  --card-foreground: 30 20% 96%;
+  --primary: 206 100% 62%;
+  --primary-foreground: 220 30% 10%;
+  --muted: 220 13% 17%;
+  --muted-foreground: 215 12% 69%;
+  --border: 220 10% 24%;
+  --input: 220 10% 24%;
+  --ring: 206 100% 62%;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(248, 198, 120, 0.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 28%),
+    linear-gradient(180deg, #f7f2ea 0%, #eef2f8 100%);
+}
+
+html[data-theme="dark"] {
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.14), transparent 26%),
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 24%),
+    linear-gradient(180deg, #11131a 0%, #0b1016 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: hsl(var(--foreground));
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+  background: transparent;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.display-title {
+  font-family: theme("fontFamily.display");
+  letter-spacing: -0.04em;
+}
+
+@layer utilities {
+  .hover-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .hover-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .hover-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-color: transparent;
+    background-clip: padding-box;
+  }
+
+  .hover-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .hover-scrollbar:hover,
+  .hover-scrollbar:focus-within {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.32) transparent;
+  }
+
+  .hover-scrollbar:hover::-webkit-scrollbar-thumb,
+  .hover-scrollbar:focus-within::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.32);
+  }
+}

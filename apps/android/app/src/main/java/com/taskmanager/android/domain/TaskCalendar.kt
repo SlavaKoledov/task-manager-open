@@ -123,7 +123,7 @@ fun buildTaskOccurrencesInRange(
             )
         }
 
-        if (task.repeat == TaskRepeat.NONE) {
+        if (task.repeat == TaskRepeat.NONE || task.isDone) {
             continue
         }
 

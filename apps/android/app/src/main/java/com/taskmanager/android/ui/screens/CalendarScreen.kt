@@ -45,6 +45,7 @@ import com.taskmanager.android.domain.getCalendarMonthRange
 import com.taskmanager.android.domain.groupTaskOccurrencesByDate
 import com.taskmanager.android.model.ListItem
 import com.taskmanager.android.model.TaskItem
+import com.taskmanager.android.ui.components.PriorityCheckbox
 import com.taskmanager.android.ui.components.parseHexColor
 import com.taskmanager.android.ui.components.taskPriorityColor
 import java.time.LocalDate
@@ -65,6 +66,7 @@ fun CalendarScreen(
     selectedDate: LocalDate,
     onSelectDate: (LocalDate) -> Unit,
     onChangeMonth: (YearMonth) -> Unit,
+    onToggleTask: (TaskItem) -> Unit,
     onOpenTask: (TaskItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -197,6 +199,7 @@ fun CalendarScreen(
                 title = selectedDate.format(selectedDateFormatter).uppercase(Locale.US),
                 occurrences = activeOccurrences,
                 listById = listById,
+                onToggleTask = onToggleTask,
                 onOpenTask = onOpenTask,
             )
 
@@ -205,6 +208,7 @@ fun CalendarScreen(
                     title = "COMPLETED",
                     occurrences = completedOccurrences,
                     listById = listById,
+                    onToggleTask = onToggleTask,
                     onOpenTask = onOpenTask,
                     muted = true,
                 )
@@ -290,6 +294,7 @@ private fun CalendarTaskSection(
     title: String,
     occurrences: List<com.taskmanager.android.domain.CalendarTaskOccurrence>,
     listById: Map<Int, ListItem>,
+    onToggleTask: (TaskItem) -> Unit,
     onOpenTask: (TaskItem) -> Unit,
     muted: Boolean = false,
 ) {
@@ -325,6 +330,7 @@ private fun CalendarTaskSection(
                         accentColor = occurrence.task.listId?.let { listById[it]?.color }?.let(::parseHexColor)
                             ?: taskPriorityColor(occurrence.task.priority),
                         listName = occurrence.task.listId?.let { listById[it]?.name },
+                        onToggleTask = onToggleTask,
                         onOpenTask = onOpenTask,
                         muted = muted,
                     )
@@ -339,6 +345,7 @@ private fun CalendarTaskRow(
     task: TaskItem,
     accentColor: Color,
     listName: String?,
+    onToggleTask: (TaskItem) -> Unit,
     onOpenTask: (TaskItem) -> Unit,
     muted: Boolean,
 ) {
@@ -350,18 +357,11 @@ private fun CalendarTaskRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .border(
-                    width = 2.dp,
-                    color = accentColor.copy(alpha = if (muted) 0.35f else 1f),
-                    shape = RoundedCornerShape(7.dp),
-                )
-                .background(
-                    color = if (task.isDone) accentColor.copy(alpha = 0.18f) else Color.Transparent,
-                    shape = RoundedCornerShape(7.dp),
-                ),
+        PriorityCheckbox(
+            checked = task.isDone,
+            priority = task.priority,
+            onCheckedChange = { onToggleTask(task) },
+            modifier = Modifier.testTag("calendar-task-toggle-${task.id}"),
         )
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {

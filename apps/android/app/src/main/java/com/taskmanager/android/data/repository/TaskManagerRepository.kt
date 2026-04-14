@@ -29,6 +29,7 @@ import com.taskmanager.android.data.sync.StoredTaskCompletionPayload
 import com.taskmanager.android.data.sync.StoredTaskCreatePayload
 import com.taskmanager.android.data.sync.StoredTaskCreateSubtaskPayload
 import com.taskmanager.android.data.sync.StoredTaskDeletePayload
+import com.taskmanager.android.data.sync.StoredSubtaskReorderPayload
 import com.taskmanager.android.data.sync.StoredTaskUpdatePayload
 import com.taskmanager.android.data.sync.TaskSyncRunResult
 import com.taskmanager.android.data.sync.TaskSyncScheduler
@@ -105,6 +106,7 @@ class TaskManagerRepository @Inject constructor(
     private val storedCreateSerializer = StoredTaskCreatePayload.serializer()
     private val storedUpdateSerializer = StoredTaskUpdatePayload.serializer()
     private val storedCompletionSerializer = StoredTaskCompletionPayload.serializer()
+    private val storedSubtaskReorderSerializer = StoredSubtaskReorderPayload.serializer()
     private val storedDeleteSerializer = StoredTaskDeletePayload.serializer()
     private val descriptionBlockListSerializer = ListSerializer(com.taskmanager.android.data.api.ApiDescriptionBlock.serializer())
 
@@ -238,15 +240,10 @@ class TaskManagerRepository @Inject constructor(
         val updateResult = applyTaskUpdatePatch(baseUrl, taskId, patch, nowIso)
         val updatedEntities = updateResult.updatedEntities
         val updatedTaskEntity = updateResult.updatedEntity
-        val currentRepeat = TaskRepeat.fromWire(updateResult.originalEntity.repeat)
         val shouldQueueCompletion =
             patch.hasIsDone &&
                 patch.isDone != null &&
                 patch.isDone != updateResult.originalEntity.isDone
-
-        if (shouldQueueCompletion && (currentRepeat != TaskRepeat.NONE || TaskRepeat.fromWire(updatedTaskEntity.repeat) != TaskRepeat.NONE)) {
-            throw ApiException("Recurring tasks require a live connection to sync safely.", 400)
-        }
 
         database.withTransaction {
             dao.upsertTasks(updatedEntities)
@@ -303,13 +300,6 @@ class TaskManagerRepository @Inject constructor(
     suspend fun toggleTask(taskId: Int) {
         val baseUrl = currentBaseUrl()
         val localTask = dao.getTask(baseUrl, taskId) ?: throw ApiException("Task not found.", 404)
-        if (TaskRepeat.fromWire(localTask.repeat) != TaskRepeat.NONE) {
-            if (taskId < 0) {
-                throw ApiException("Recurring tasks require a live connection to sync safely.", 400)
-            }
-            toggleRecurringTaskOnline(baseUrl, taskId)
-            return
-        }
 
         if (taskId < 0) {
             updatePendingCreateCompletion(baseUrl, taskId, !localTask.isDone)
@@ -377,12 +367,51 @@ class TaskManagerRepository @Inject constructor(
     }
 
     suspend fun reorderSubtasks(parentTaskId: Int, subtaskIds: List<Int>): TaskItem {
-        require(parentTaskId > 0 && subtaskIds.none { it < 0 }) { "Unsynced local tasks cannot be reordered before sync." }
-
         val baseUrl = currentBaseUrl()
-        executeApiCall(baseUrl) { reorderSubtasks(parentTaskId, ApiSubtaskReorderPayload(subtaskIds)) }
-        refreshRemoteCache(baseUrl)
-        return dao.getTasks(baseUrl).let(localCacheMapper::toTaskItems).first { it.id == parentTaskId }
+        val nowMs = clock.millis()
+        val nowIso = nowIsoString(nowMs)
+        val cachedTasks = dao.getTasks(baseUrl)
+        val parentTask =
+            cachedTasks.firstOrNull { it.id == parentTaskId && it.deletedAt == null } ?: throw ApiException("Task not found.", 404)
+        if (parentTask.parentId != null) {
+            throw ApiException("Only top-level tasks can reorder subtasks.", 400)
+        }
+
+        val currentSubtasks = cachedTasks
+            .filter { it.parentId == parentTaskId && it.deletedAt == null }
+            .sortedWith(compareBy<CachedTaskEntity>({ it.position }, { it.createdAt }, { it.id }))
+        val currentIds = currentSubtasks.map(CachedTaskEntity::id)
+        if (currentIds.sorted() != subtaskIds.sorted()) {
+            throw ApiException("Subtask reorder payload must contain the exact current subtask ids.", 400)
+        }
+
+        val positionsById = subtaskIds.mapIndexed { index, subtaskId -> subtaskId to index }.toMap()
+        val reorderedSubtasks = currentSubtasks.map { subtask ->
+            val nextPosition = positionsById.getValue(subtask.id)
+            if (subtask.position == nextPosition) {
+                subtask
+            } else {
+                subtask.copy(position = nextPosition, updatedAt = nowIso)
+            }
+        }
+        val updatedTasks = cachedTasks.map { entity ->
+            reorderedSubtasks.firstOrNull { it.id == entity.id } ?: entity
+        }
+
+        database.withTransaction {
+            if (reorderedSubtasks.isNotEmpty()) {
+                dao.upsertTasks(reorderedSubtasks)
+            }
+            if (parentTaskId < 0) {
+                updatePendingCreateSubtaskOrder(baseUrl, parentTaskId, subtaskIds, nowMs)
+            } else {
+                upsertPendingSubtaskReorder(baseUrl, parentTaskId, subtaskIds, nowMs)
+            }
+            clearSyncError(baseUrl)
+        }
+
+        syncScheduler.enqueuePendingSync()
+        return localCacheMapper.toTaskItems(updatedTasks).first { it.id == parentTaskId }
     }
 
     suspend fun moveTaskToParent(taskId: Int, parentTaskId: Int, orderedIds: List<Int>) {
@@ -517,7 +546,7 @@ class TaskManagerRepository @Inject constructor(
                 }
 
                 val remoteTasks = fetchRemoteTasks(baseUrl)
-                val remoteTaskById = remoteTasks.associateBy(ApiTask::id).toMutableMap()
+                val remoteTaskById = flattenRemoteTasksById(remoteTasks).toMutableMap()
                 var anyConfirmedOperation = false
                 var syncFailure: ApiException? = null
                 var retryableFailure = false
@@ -530,6 +559,8 @@ class TaskManagerRepository @Inject constructor(
                             syncTaskUpdateOperation(baseUrl, operation, remoteTaskById)
                         PendingSyncOperationType.SET_TASK_COMPLETION.wire ->
                             syncTaskCompletionOperation(baseUrl, operation, remoteTaskById)
+                        PendingSyncOperationType.REORDER_SUBTASKS.wire ->
+                            syncSubtaskReorderOperation(baseUrl, operation, remoteTaskById)
                         PendingSyncOperationType.DELETE_TASK.wire ->
                             syncTaskDeleteOperation(baseUrl, operation, remoteTaskById)
                         else -> SyncOperationResult.failure(
@@ -602,7 +633,15 @@ class TaskManagerRepository @Inject constructor(
         }
 
         database.withTransaction {
-            dao.upsertTasks(localCacheMapper.toTaskEntities(baseUrl, listOf(createdTask)))
+            val localPreviewTask = dao.getTask(baseUrl, payload.localTaskId)
+            val syncedEntities = localCacheMapper.toTaskEntities(baseUrl, listOf(createdTask)).map { entity ->
+                if (localPreviewTask != null && entity.parentId == createdTask.parentId && entity.id == createdTask.id) {
+                    entity.copy(position = localPreviewTask.position)
+                } else {
+                    entity
+                }
+            }
+            dao.upsertTasks(syncedEntities)
             dao.deleteTasksByIds(baseUrl, payload.localTaskIds())
             dao.deletePendingOperation(operation.id)
         }
@@ -665,6 +704,61 @@ class TaskManagerRepository @Inject constructor(
             dao.deletePendingOperation(operation.id)
         }
         return SyncOperationResult.confirmed(toggledTask)
+    }
+
+    private suspend fun syncSubtaskReorderOperation(
+        baseUrl: String,
+        operation: PendingSyncOperationEntity,
+        remoteTaskById: MutableMap<Int, ApiTask>,
+    ): SyncOperationResult {
+        val parentTask = remoteTaskById[operation.targetTaskId]
+        if (parentTask == null) {
+            database.withTransaction {
+                softDeleteTaskFamily(
+                    baseUrl = baseUrl,
+                    taskId = operation.targetTaskId,
+                    nowIso = nowIsoString(clock.millis()),
+                )
+                dao.deletePendingOperation(operation.id)
+            }
+            return SyncOperationResult.confirmed()
+        }
+
+        val localSubtaskIds = dao.getTasks(baseUrl)
+            .asSequence()
+            .filter { it.parentId == operation.targetTaskId && it.deletedAt == null }
+            .sortedWith(compareBy<CachedTaskEntity>({ it.position }, { it.createdAt }, { it.id }))
+            .map(CachedTaskEntity::id)
+            .filter { it > 0 }
+            .toList()
+
+        if (localSubtaskIds.size <= 1 || localSubtaskIds == parentTask.subtasks.map(ApiTask::id)) {
+            database.withTransaction {
+                dao.upsertTasks(localCacheMapper.toTaskEntities(baseUrl, listOf(parentTask)))
+                dao.deletePendingOperation(operation.id)
+            }
+            return SyncOperationResult.confirmed(parentTask)
+        }
+
+        val reorderedTask = try {
+            executeApiCall(baseUrl) { reorderSubtasks(operation.targetTaskId, ApiSubtaskReorderPayload(localSubtaskIds)) }
+        } catch (error: ApiException) {
+            if (!shouldRetry(error)) {
+                database.withTransaction {
+                    dao.deletePendingOperation(operation.id)
+                }
+                return SyncOperationResult.failure(error, shouldRetry = false)
+            }
+
+            updateOperationFailure(operation, error.message)
+            return SyncOperationResult.failure(error, shouldRetry = true)
+        }
+
+        database.withTransaction {
+            dao.upsertTasks(localCacheMapper.toTaskEntities(baseUrl, listOf(reorderedTask)))
+            dao.deletePendingOperation(operation.id)
+        }
+        return SyncOperationResult.confirmed(reorderedTask)
     }
 
     private suspend fun syncTaskDeleteOperation(
@@ -786,8 +880,13 @@ class TaskManagerRepository @Inject constructor(
         val localTasks = dao.getTasks(baseUrl)
         val pendingUpdateOverrides = loadPendingUpdateOverrides(baseUrl)
         val pendingCompletionOverrides = loadPendingCompletionOverrides(baseUrl)
+        val pendingSubtaskReorderParents = loadPendingSubtaskReorderParents(baseUrl)
         val remoteTaskEntities = applyPendingCompletionOverrides(
-            applyPendingUpdateOverrides(localCacheMapper.toTaskEntities(baseUrl, tasks), pendingUpdateOverrides),
+            applyPendingSubtaskReorderOverrides(
+                localTasks = localTasks,
+                entities = applyPendingUpdateOverrides(localCacheMapper.toTaskEntities(baseUrl, tasks), pendingUpdateOverrides),
+                reorderedParentIds = pendingSubtaskReorderParents,
+            ),
             pendingCompletionOverrides,
         )
         val refreshedTaskEntities = mergeRemoteTasksWithLocalState(
@@ -898,20 +997,6 @@ class TaskManagerRepository @Inject constructor(
                 ),
             )
             clearSyncError(baseUrl)
-        }
-    }
-
-    private suspend fun toggleRecurringTaskOnline(baseUrl: String, taskId: Int) {
-        try {
-            executeApiCall(baseUrl) { toggleTask(taskId) }
-            refreshRemoteCache(baseUrl)
-        } catch (error: ApiException) {
-            throw ApiException(
-                "Recurring tasks require a live connection to sync safely.",
-                error.statusCode,
-                technicalMessage = error.technicalMessage,
-                cause = error,
-            )
         }
     }
 
@@ -1325,6 +1410,34 @@ class TaskManagerRepository @Inject constructor(
         )
     }
 
+    private suspend fun updatePendingCreateSubtaskOrder(
+        baseUrl: String,
+        parentTaskId: Int,
+        subtaskIds: List<Int>,
+        nowMs: Long,
+    ) {
+        val pendingCreate = findPendingCreateForLocalTask(baseUrl, parentTaskId)
+            ?: throw ApiException("Unsynced task could not be reordered.", 404)
+        if (pendingCreate.payload.localTaskId != parentTaskId) {
+            throw ApiException("Only pending parent tasks can reorder offline subtasks.", 400)
+        }
+
+        val subtasksById = pendingCreate.payload.subtasks.associateBy(StoredTaskCreateSubtaskPayload::localId)
+        val reorderedSubtasks = subtaskIds.map { subtaskId ->
+            subtasksById[subtaskId] ?: throw ApiException("Subtask reorder payload must contain the exact current subtask ids.", 400)
+        }
+        dao.updatePendingOperation(
+            pendingCreate.operation.copy(
+                payloadJson = json.encodeToString(
+                    storedCreateSerializer,
+                    pendingCreate.payload.copy(subtasks = reorderedSubtasks),
+                ),
+                updatedAtEpochMs = nowMs,
+                lastErrorMessage = null,
+            ),
+        )
+    }
+
     private suspend fun upsertPendingTaskUpdate(
         baseUrl: String,
         patch: TaskUpdatePatch,
@@ -1384,6 +1497,43 @@ class TaskManagerRepository @Inject constructor(
                     baseUrl = baseUrl,
                     operationType = PendingSyncOperationType.SET_TASK_COMPLETION.wire,
                     targetTaskId = taskId,
+                    payloadJson = payloadJson,
+                    createdAtEpochMs = nowMs,
+                    updatedAtEpochMs = nowMs,
+                ),
+            )
+        } else {
+            dao.updatePendingOperation(
+                existingOperation.copy(
+                    payloadJson = payloadJson,
+                    updatedAtEpochMs = nowMs,
+                    lastErrorMessage = null,
+                ),
+            )
+        }
+    }
+
+    private suspend fun upsertPendingSubtaskReorder(
+        baseUrl: String,
+        parentTaskId: Int,
+        subtaskIds: List<Int>,
+        nowMs: Long,
+    ) {
+        val payloadJson = json.encodeToString(
+            storedSubtaskReorderSerializer,
+            StoredSubtaskReorderPayload(orderedSubtaskIds = subtaskIds),
+        )
+        val existingOperation = dao.getPendingOperationForTask(
+            baseUrl = baseUrl,
+            operationType = PendingSyncOperationType.REORDER_SUBTASKS.wire,
+            taskId = parentTaskId,
+        )
+        if (existingOperation == null) {
+            dao.insertPendingOperation(
+                PendingSyncOperationEntity(
+                    baseUrl = baseUrl,
+                    operationType = PendingSyncOperationType.REORDER_SUBTASKS.wire,
+                    targetTaskId = parentTaskId,
                     payloadJson = payloadJson,
                     createdAtEpochMs = nowMs,
                     updatedAtEpochMs = nowMs,
@@ -1534,6 +1684,13 @@ class TaskManagerRepository @Inject constructor(
             }
             .toMap()
 
+    private suspend fun loadPendingSubtaskReorderParents(baseUrl: String): Set<Int> =
+        dao.getPendingSyncOperations(baseUrl)
+            .asSequence()
+            .filter { it.operationType == PendingSyncOperationType.REORDER_SUBTASKS.wire }
+            .map(PendingSyncOperationEntity::targetTaskId)
+            .toSet()
+
     private fun applyPendingUpdateOverrides(
         entities: List<CachedTaskEntity>,
         overrides: Map<Int, StoredTaskUpdatePayload>,
@@ -1586,6 +1743,27 @@ class TaskManagerRepository @Inject constructor(
         overrides[entity.id]?.let { desiredIsDone ->
             entity.copy(isDone = desiredIsDone)
         } ?: entity
+    }
+
+    private fun applyPendingSubtaskReorderOverrides(
+        localTasks: List<CachedTaskEntity>,
+        entities: List<CachedTaskEntity>,
+        reorderedParentIds: Set<Int>,
+    ): List<CachedTaskEntity> {
+        if (reorderedParentIds.isEmpty()) {
+            return entities
+        }
+
+        val localPositionsById = localTasks
+            .asSequence()
+            .filter { it.parentId in reorderedParentIds && it.deletedAt == null }
+            .associate { it.id to it.position }
+
+        return entities.map { entity ->
+            localPositionsById[entity.id]?.let { localPosition ->
+                entity.copy(position = localPosition)
+            } ?: entity
+        }
     }
 
     private fun currentBaseUrlFlow(): Flow<String> =
@@ -1744,4 +1922,16 @@ class TaskManagerRepository @Inject constructor(
 private fun StoredTaskCreatePayload.localTaskIds(): List<Int> = buildList {
     add(localTaskId)
     subtasks.forEach { add(it.localId) }
+}
+
+private fun flattenRemoteTasksById(tasks: List<ApiTask>): Map<Int, ApiTask> {
+    val flattened = linkedMapOf<Int, ApiTask>()
+
+    fun visit(task: ApiTask) {
+        flattened[task.id] = task
+        task.subtasks.forEach(::visit)
+    }
+
+    tasks.forEach(::visit)
+    return flattened
 }

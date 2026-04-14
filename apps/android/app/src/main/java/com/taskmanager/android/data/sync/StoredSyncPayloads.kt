@@ -74,6 +74,11 @@ data class StoredTaskCompletionPayload(
 )
 
 @Serializable
+data class StoredSubtaskReorderPayload(
+    val orderedSubtaskIds: List<Int> = emptyList(),
+)
+
+@Serializable
 data class StoredTaskDeletePayload(
     val deletedAt: String? = null,
 )

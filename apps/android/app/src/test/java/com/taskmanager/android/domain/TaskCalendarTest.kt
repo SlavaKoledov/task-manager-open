@@ -98,4 +98,28 @@ class TaskCalendarTest {
             "2026-03-30",
         )
     }
+
+    @Test
+    fun `done recurring tasks do not keep projecting future occurrences`() {
+        val occurrences = buildTaskOccurrencesInRange(
+            tasks = listOf(
+                testTaskItem(
+                    id = 9,
+                    title = "Completed repeat",
+                    dueDate = "2026-03-17",
+                    isDone = true,
+                    repeat = com.taskmanager.android.model.TaskRepeat.DAILY,
+                    repeatUntil = "2026-03-20",
+                ),
+            ),
+            range = CalendarDateRange(
+                start = LocalDate.parse("2026-03-17"),
+                endInclusive = LocalDate.parse("2026-03-20"),
+            ),
+        )
+
+        assertThat(occurrences.map { Triple(it.task.id, it.date.toString(), it.isRecurring) }).containsExactly(
+            Triple(9, "2026-03-17", false),
+        )
+    }
 }

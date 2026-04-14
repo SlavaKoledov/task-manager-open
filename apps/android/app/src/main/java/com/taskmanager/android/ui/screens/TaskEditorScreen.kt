@@ -401,19 +401,11 @@ fun TaskEditorScreen(
                         onDelete = { id ->
                             createSubtasks = createSubtasks.filterNot { it.id == id }.mapIndexed { index, item -> item.copy(position = index) }
                         },
-                        onMoveUp = { id ->
-                            val index = createSubtasks.indexOfFirst { it.id == id }
-                            if (index <= 0) return@SubtaskDraftList
-                            createSubtasks = createSubtasks.toMutableList().apply {
-                                add(index - 1, removeAt(index))
-                            }.mapIndexed { itemIndex, item -> item.copy(position = itemIndex) }
-                        },
-                        onMoveDown = { id ->
-                            val index = createSubtasks.indexOfFirst { it.id == id }
-                            if (index == -1 || index >= createSubtasks.lastIndex) return@SubtaskDraftList
-                            createSubtasks = createSubtasks.toMutableList().apply {
-                                add(index + 1, removeAt(index))
-                            }.mapIndexed { itemIndex, item -> item.copy(position = itemIndex) }
+                        onReorder = { orderedIds ->
+                            val positions = orderedIds.withIndex().associate { it.value to it.index }
+                            createSubtasks = createSubtasks
+                                .map { item -> item.copy(position = positions.getValue(item.id)) }
+                                .sortedBy(EditableSubtaskDraft::position)
                         },
                     )
                 } else {
@@ -451,26 +443,9 @@ fun TaskEditorScreen(
                                 }
                             }
                         },
-                        onMoveUp = { id ->
-                            val index = task.subtasks.indexOfFirst { it.id == id.toInt() }
-                            if (index <= 0) return@SubtaskDraftList
+                        onReorder = { orderedIds ->
                             coroutineScope.launch {
-                                val reorderedIds = task.subtasks.map { it.id }.toMutableList().apply {
-                                    add(index - 1, removeAt(index))
-                                }
-                                onReorderSubtasks(task.id, reorderedIds).onFailure {
-                                    errorMessage = it.message ?: "Failed to reorder subtasks."
-                                }
-                            }
-                        },
-                        onMoveDown = { id ->
-                            val index = task.subtasks.indexOfFirst { it.id == id.toInt() }
-                            if (index == -1 || index >= task.subtasks.lastIndex) return@SubtaskDraftList
-                            coroutineScope.launch {
-                                val reorderedIds = task.subtasks.map { it.id }.toMutableList().apply {
-                                    add(index + 1, removeAt(index))
-                                }
-                                onReorderSubtasks(task.id, reorderedIds).onFailure {
+                                onReorderSubtasks(task.id, orderedIds.map(Long::toInt)).onFailure {
                                     errorMessage = it.message ?: "Failed to reorder subtasks."
                                 }
                             }

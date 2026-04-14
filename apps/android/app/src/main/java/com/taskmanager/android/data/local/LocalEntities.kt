@@ -84,6 +84,7 @@ enum class PendingSyncOperationType(val wire: String) {
     CREATE_TASK("create_task"),
     UPDATE_TASK("update_task"),
     SET_TASK_COMPLETION("set_task_completion"),
+    REORDER_SUBTASKS("reorder_subtasks"),
     DELETE_TASK("delete_task"),
     ;
 }

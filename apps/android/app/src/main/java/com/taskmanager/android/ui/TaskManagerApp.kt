@@ -181,6 +181,7 @@ fun TaskManagerApp(
         composable(TaskManagerRoutes.CALENDAR) {
             CalendarRoute(
                 navController = navController,
+                viewModel = viewModel,
                 uiState = uiState,
                 snackbarHostState = snackbarHostState,
                 lastTaskRoute = lastTaskRoute,
@@ -504,6 +505,7 @@ private fun HomeRoute(
 @Composable
 private fun CalendarRoute(
     navController: NavHostController,
+    viewModel: TaskManagerViewModel,
     uiState: TaskManagerUiState,
     snackbarHostState: SnackbarHostState,
     lastTaskRoute: String,
@@ -511,6 +513,7 @@ private fun CalendarRoute(
     val todayDate = remember(uiState.todayString) { parseLocalDateString(uiState.todayString) ?: LocalDate.now() }
     var selectedDateString by rememberSaveable { mutableStateOf(uiState.todayString) }
     var visibleMonthString by rememberSaveable { mutableStateOf(YearMonth.from(todayDate).toString()) }
+    val coroutineScope = rememberCoroutineScope()
     val selectedDate = remember(selectedDateString) { parseLocalDateString(selectedDateString) ?: todayDate }
     val visibleMonth = remember(visibleMonthString) { runCatching { YearMonth.parse(visibleMonthString) }.getOrElse { YearMonth.from(selectedDate) } }
     val visibleTasks = remember(uiState.tasks, uiState.preferences.showCompleted) {
@@ -562,6 +565,9 @@ private fun CalendarRoute(
             onChangeMonth = { nextMonth ->
                 visibleMonthString = nextMonth.toString()
                 selectedDateString = nextMonth.atDay(minOf(selectedDate.dayOfMonth, nextMonth.lengthOfMonth())).toString()
+            },
+            onToggleTask = { task ->
+                coroutineScope.launch { viewModel.toggleTask(task.id) }
             },
             onOpenTask = { task -> navController.navigate(TaskManagerRoutes.editTask(task.id)) },
             modifier = Modifier.padding(paddingValues),

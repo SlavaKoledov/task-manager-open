@@ -85,7 +85,6 @@ export function TaskDialog({
   task,
   defaultDraft,
   lists,
-  subtasksCollapsed,
   onOpenChange,
   onCreateTask,
   onUpdateTask,
@@ -95,7 +94,6 @@ export function TaskDialog({
   onToggleSubtask,
   onDeleteSubtask,
   onReorderSubtasks,
-  onToggleSubtasks,
 }: TaskDialogProps) {
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [subtasks, setSubtasks] = useState<TaskSubtask[]>(task?.subtasks ?? []);
@@ -103,6 +101,7 @@ export function TaskDialog({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [descriptionDialogOpen, setDescriptionDialogOpen] = useState(false);
+  const [editorSubtasksCollapsed, setEditorSubtasksCollapsed] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement | null>(null);
   const subtaskListRef = useRef<SubtaskListHandle | null>(null);
   const localSubtaskIdRef = useRef(-1);
@@ -137,6 +136,7 @@ export function TaskDialog({
     }
 
     setDescriptionDialogOpen(false);
+    setEditorSubtasksCollapsed(false);
     setError(null);
     setIsSubmitting(false);
 
@@ -375,18 +375,14 @@ export function TaskDialog({
 
   const handleAddSubtaskRequest = useCallback(() => {
     setSubtaskAddKey((current) => current + 1);
-    if (task && subtasksCollapsed) {
-      onToggleSubtasks(task.id);
+    if (editorSubtasksCollapsed) {
+      setEditorSubtasksCollapsed(false);
     }
-  }, [onToggleSubtasks, subtasksCollapsed, task]);
+  }, [editorSubtasksCollapsed]);
 
   const handleToggleSubtasks = useCallback(() => {
-    if (!task) {
-      return;
-    }
-
-    onToggleSubtasks(task.id);
-  }, [onToggleSubtasks, task]);
+    setEditorSubtasksCollapsed((current) => !current);
+  }, []);
 
   const descriptionPreviewText = descriptionBlocksToText(draft.description_blocks);
 
@@ -473,7 +469,7 @@ export function TaskDialog({
                 </div>
               </div>
 
-              {!task || !subtasksCollapsed ? (
+              {!task || !editorSubtasksCollapsed ? (
                 <SubtaskList
                   ref={subtaskListRef}
                   subtasks={subtasks}
@@ -506,7 +502,7 @@ export function TaskDialog({
                 <TaskActionsMenu
                   isPinned={draft.is_pinned}
                   hasSubtasks={task ? subtasks.length > 0 : false}
-                  subtasksCollapsed={subtasksCollapsed}
+                  subtasksCollapsed={editorSubtasksCollapsed}
                   isDisabled={isSubmitting}
                   canDelete={Boolean(task && onDelete)}
                   onPinToggle={handlePinToggle}

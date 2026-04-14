@@ -70,13 +70,17 @@ function makeSubtask(overrides: Partial<TaskSubtask> = {}): TaskSubtask {
 function renderTaskDialog({
   task = null,
   defaultDraft = makeDraft(),
+  subtasksCollapsed = false,
   onCreateTask = async () => undefined,
   onCreateSubtask = async (_task: TaskItem, title: string) => makeSubtask({ title }),
+  onToggleSubtasks = () => undefined,
 }: {
   task?: TaskItem | null;
   defaultDraft?: TaskDraft;
+  subtasksCollapsed?: boolean;
   onCreateTask?: (payload: TaskCreatePayload) => Promise<void>;
   onCreateSubtask?: (task: TaskItem, title: string) => Promise<TaskSubtask>;
+  onToggleSubtasks?: (taskId: number) => void;
 }) {
   const lists: ListItem[] = [];
 
@@ -86,7 +90,7 @@ function renderTaskDialog({
       task={task}
       defaultDraft={defaultDraft}
       lists={lists}
-      subtasksCollapsed={false}
+      subtasksCollapsed={subtasksCollapsed}
       onOpenChange={() => undefined}
       onCreateTask={onCreateTask}
       onUpdateTask={async (nextTask) => nextTask}
@@ -95,7 +99,7 @@ function renderTaskDialog({
       onToggleSubtask={async (subtask) => ({ ...subtask, is_done: !subtask.is_done })}
       onDeleteSubtask={async () => undefined}
       onReorderSubtasks={async (nextTask) => nextTask}
-      onToggleSubtasks={() => undefined}
+      onToggleSubtasks={onToggleSubtasks}
     />,
   );
 }
@@ -167,5 +171,35 @@ describe("TaskDialog", () => {
 
     await waitFor(() => expect(onCreateSubtask).toHaveBeenCalledTimes(1));
     expect(screen.getByDisplayValue("Ship release notes")).not.toBeNull();
+  });
+
+  it("keeps editor subtasks visible even when the main task card is collapsed", () => {
+    const task = makeTask({ subtasks: [makeSubtask()] });
+    const onToggleSubtasks = vi.fn();
+
+    renderTaskDialog({ task, subtasksCollapsed: true, onToggleSubtasks });
+
+    expect(screen.getByDisplayValue("Write release notes")).not.toBeNull();
+    expect(screen.queryByText("Subtasks are hidden for this task.")).toBeNull();
+    expect(onToggleSubtasks).not.toHaveBeenCalled();
+  });
+
+  it("collapses editor subtasks only through the editor actions menu", async () => {
+    const task = makeTask({ subtasks: [makeSubtask()] });
+    const onToggleSubtasks = vi.fn();
+
+    renderTaskDialog({ task, subtasksCollapsed: false, onToggleSubtasks });
+
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(await screen.findByText("Hide subtasks"));
+
+    expect(screen.getByText("Subtasks are hidden for this task.")).not.toBeNull();
+    expect(screen.queryByDisplayValue("Write release notes")).toBeNull();
+    expect(onToggleSubtasks).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Task actions" }));
+    fireEvent.click(await screen.findByText("Show subtasks"));
+
+    await waitFor(() => expect(screen.getByDisplayValue("Write release notes")).not.toBeNull());
   });
 });

@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.taskmanager.android.model.TaskRepeat
@@ -46,6 +48,7 @@ class CalendarScreenTest {
                     selectedDate = selectedDate,
                     onSelectDate = { selectedDate = it },
                     onChangeMonth = { visibleMonth = it },
+                    onToggleTask = {},
                     onOpenTask = {},
                 )
             }
@@ -80,6 +83,7 @@ class CalendarScreenTest {
                     selectedDate = selectedDate,
                     onSelectDate = { selectedDate = it },
                     onChangeMonth = { visibleMonth = it },
+                    onToggleTask = {},
                     onOpenTask = {},
                 )
             }
@@ -88,6 +92,44 @@ class CalendarScreenTest {
         composeRule.runOnIdle {
             assertThat(composeRule.onAllNodesWithTag("calendar-markers-2026-03-15", useUnmergedTree = true).fetchSemanticsNodes()).isNotEmpty()
             assertThat(composeRule.onAllNodesWithTag("calendar-markers-2026-03-18", useUnmergedTree = true).fetchSemanticsNodes()).isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `calendar task checkbox toggles recurring task directly from the agenda`() {
+        var toggledTaskId: Int? = null
+
+        composeRule.setContent {
+            TaskManagerTheme {
+                var selectedDate by remember { mutableStateOf(LocalDate.parse("2026-03-15")) }
+                var visibleMonth by remember { mutableStateOf(YearMonth.of(2026, 3)) }
+
+                CalendarScreen(
+                    tasks = listOf(
+                        testTaskItem(
+                            id = 8,
+                            title = "Daily review",
+                            dueDate = "2026-03-15",
+                            repeat = TaskRepeat.DAILY,
+                            repeatUntil = "2026-03-18",
+                        ),
+                    ),
+                    lists = emptyList(),
+                    todayString = "2026-03-15",
+                    visibleMonth = visibleMonth,
+                    selectedDate = selectedDate,
+                    onSelectDate = { selectedDate = it },
+                    onChangeMonth = { visibleMonth = it },
+                    onToggleTask = { toggledTaskId = it.id },
+                    onOpenTask = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("calendar-task-toggle-8", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.runOnIdle {
+            assertThat(toggledTaskId).isEqualTo(8)
         }
     }
 }

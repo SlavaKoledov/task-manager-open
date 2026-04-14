@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.taskmanager.android.data.api.ApiListItem
 import com.taskmanager.android.data.api.ApiServiceFactory
+import com.taskmanager.android.data.api.ApiSubtaskReorderPayload
 import com.taskmanager.android.data.api.ApiTask
 import com.taskmanager.android.data.api.ApiTaskCreatePayload
 import com.taskmanager.android.data.local.LocalCacheMapper
@@ -24,6 +25,7 @@ import com.taskmanager.android.model.TaskViewTarget
 import java.io.File
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -281,6 +283,41 @@ class TaskManagerRepositoryTest {
     }
 
     @Test
+    fun `toggling one subtask keeps it in the list and preserves sibling progress through sync`() = runBlocking {
+        val baseUrl = preferencesStore.currentPreferences().baseUrl
+        seedCache(
+            baseUrl,
+            listOf(
+                serverTask(
+                    id = 7,
+                    title = "Parent task",
+                    isDone = false,
+                    subtasks = listOf(
+                        serverSubtask(id = 71, parentId = 7, title = "First child", isDone = false, position = 0),
+                        serverSubtask(id = 72, parentId = 7, title = "Second child", isDone = true, position = 1),
+                    ),
+                ),
+            ),
+        )
+
+        repository.toggleTask(71)
+
+        val localParent = repository.observeTasks().first().single()
+        assertThat(localParent.subtasks.map { it.id }).containsExactly(71, 72).inOrder()
+        assertThat(localParent.subtasks.first { it.id == 71 }.isDone).isTrue()
+        assertThat(localParent.subtasks.first { it.id == 72 }.isDone).isTrue()
+
+        val result = repository.syncCurrentBaseUrl(forceRefresh = true)
+        val syncedParent = repository.observeTasks().first().single()
+
+        assertThat(result.success).isTrue()
+        assertThat(dispatcher.toggleCalls).isEqualTo(1)
+        assertThat(syncedParent.subtasks.map { it.id }).containsExactly(71, 72).inOrder()
+        assertThat(syncedParent.subtasks.first { it.id == 71 }.isDone).isTrue()
+        assertThat(syncedParent.subtasks.first { it.id == 72 }.isDone).isTrue()
+    }
+
+    @Test
     fun `repeated sync retry does not create duplicate task after lost response`() = runBlocking {
         dispatcher.disconnectAfterNextCreate = true
         repository.createTask(
@@ -490,6 +527,96 @@ class TaskManagerRepositoryTest {
     }
 
     @Test
+    fun `offline reorder subtasks with local ids survives sync`() = runBlocking {
+        val baseUrl = preferencesStore.currentPreferences().baseUrl
+        seedCache(
+            baseUrl,
+            listOf(
+                serverTask(
+                    id = 7,
+                    title = "Parent task",
+                    isDone = false,
+                    subtasks = listOf(
+                        serverSubtask(id = 71, parentId = 7, title = "First", position = 0),
+                        serverSubtask(id = 72, parentId = 7, title = "Second", position = 1),
+                    ),
+                ),
+            ),
+        )
+
+        repository.createTask(
+            payload = ApiTaskCreatePayload(
+                title = "Third",
+                priority = "not_urgent_unimportant",
+                repeat = "none",
+                parentId = 7,
+            ),
+            editorContext = TaskEditorContext(viewTarget = TaskViewTarget.All),
+            todayString = "2026-03-17",
+            tomorrowString = "2026-03-18",
+            newTaskPlacement = NewTaskPlacement.END,
+        )
+
+        val localSubtaskId = repository.observeTasks().first().single()
+            .subtasks.first { it.title == "Third" }
+            .id
+
+        repository.reorderSubtasks(7, listOf(72, localSubtaskId, 71))
+
+        val localParent = repository.observeTasks().first().single()
+        assertThat(localParent.subtasks.map { it.title }).containsExactly("Second", "Third", "First").inOrder()
+
+        val result = repository.syncCurrentBaseUrl(forceRefresh = true)
+        val syncedParent = repository.observeTasks().first().single()
+
+        assertThat(result.success).isTrue()
+        assertThat(syncedParent.subtasks.map { it.title }).containsExactly("Second", "Third", "First").inOrder()
+        assertThat(dao.getPendingSyncOperations(baseUrl)).isEmpty()
+    }
+
+    @Test
+    fun `calendar checkbox completion works for recurring and non recurring tasks`() {
+        runBlocking {
+            val baseUrl = preferencesStore.currentPreferences().baseUrl
+            seedCache(
+                baseUrl,
+                listOf(
+                    serverTask(id = 7, title = "One-off task", isDone = false, dueDate = "2026-03-17"),
+                    serverTask(
+                        id = 8,
+                        title = "Daily review",
+                        isDone = false,
+                        dueDate = "2026-03-17",
+                        repeat = "daily",
+                        repeatUntil = "2026-03-19",
+                        subtasks = listOf(serverSubtask(id = 81, parentId = 8, title = "Prep notes", position = 0)),
+                    ),
+                ),
+            )
+
+            repository.toggleTask(7)
+            repository.toggleTask(8)
+
+            val localTasks = repository.observeTasks().first()
+            assertThat(localTasks.first { it.id == 7 }.isDone).isTrue()
+            assertThat(localTasks.first { it.id == 8 }.isDone).isTrue()
+
+            val result = repository.syncCurrentBaseUrl(forceRefresh = true)
+            val syncedTasks = repository.observeTasks().first()
+            val historicalRecurring = syncedTasks.first { it.id == 8 }
+            val nextRecurring = syncedTasks.first { it.id != 8 && it.title == "Daily review" }
+
+            assertThat(result.success).isTrue()
+            assertThat(dispatcher.toggleCalls).isEqualTo(2)
+            assertThat(syncedTasks.first { it.id == 7 }.isDone).isTrue()
+            assertThat(historicalRecurring.isDone).isTrue()
+            assertThat(nextRecurring.isDone).isFalse()
+            assertThat(nextRecurring.dueDate).isEqualTo("2026-03-18")
+            assertThat(nextRecurring.subtasks.map { it.title }).containsExactly("Prep notes").inOrder()
+        }
+    }
+
+    @Test
     fun `offline recurring delete syncs without resurrecting the task`() = runBlocking {
         val baseUrl = preferencesStore.currentPreferences().baseUrl
         seedCache(
@@ -692,6 +819,32 @@ class TaskManagerRepositoryTest {
         subtasks = subtasks,
     )
 
+    private fun serverSubtask(
+        id: Int,
+        parentId: Int,
+        title: String,
+        isDone: Boolean = false,
+        position: Int = 0,
+    ): ApiTask = ApiTask(
+        id = id,
+        title = title,
+        description = null,
+        descriptionBlocks = emptyList(),
+        dueDate = null,
+        reminderTime = null,
+        repeatUntil = null,
+        isDone = isDone,
+        isPinned = false,
+        priority = "not_urgent_unimportant",
+        repeat = "none",
+        parentId = parentId,
+        position = position,
+        listId = null,
+        createdAt = "2026-03-17T10:00:00Z",
+        updatedAt = "2026-03-17T10:00:00Z",
+        subtasks = emptyList(),
+    )
+
     private class RecordingTaskSyncScheduler : TaskSyncScheduler {
         var enqueueCalls: Int = 0
 
@@ -745,6 +898,7 @@ class TaskManagerRepositoryTest {
                     json.encodeToString(taskListSerializer, tasks),
                 )
                 request.method == "POST" && path == "/api/tasks" -> handleCreate(request)
+                request.method == "POST" && path.matches(Regex("/api/tasks/\\d+/subtasks/reorder")) -> handleSubtaskReorder(path, request)
                 request.method == "PATCH" && path.matches(Regex("/api/tasks/\\d+")) -> handleUpdate(path, request)
                 request.method == "DELETE" && path.matches(Regex("/api/tasks/\\d+")) -> handleDelete(path)
                 request.method == "POST" && path.matches(Regex("/api/tasks/\\d+/toggle")) -> handleToggle(path)
@@ -805,15 +959,15 @@ class TaskManagerRepositoryTest {
                     },
                 )
                 payload.clientRequestId?.let { taskIdsByClientRequestId[it] = rootId }
-                if (payload.parentId == null) {
+                val parentId = payload.parentId
+                if (parentId == null) {
                     tasks += created
                 } else {
-                    tasks = tasks.map { task ->
-                        if (task.id == payload.parentId) {
-                            task.copy(subtasks = task.subtasks + created.copy(subtasks = emptyList()))
-                        } else {
-                            task
-                        }
+                    tasks = replaceTask(tasks, parentId) { parent ->
+                        parent.copy(
+                            subtasks = (parent.subtasks + created.copy(subtasks = emptyList()))
+                                .mapIndexed { index, subtask -> subtask.copy(position = index) },
+                        )
                     }.toMutableList()
                 }
                 created
@@ -834,13 +988,28 @@ class TaskManagerRepositoryTest {
                 return MockResponse().setResponseCode(status).setBody("{\"detail\":\"Toggle failed\"}")
             }
             val taskId = path.removeSuffix("/toggle").substringAfterLast("/").toInt()
-            val existingIndex = tasks.indexOfFirst { it.id == taskId }
-            if (existingIndex == -1) {
+            val current = findTask(taskId)
+            if (current == null) {
                 return MockResponse().setResponseCode(404).setBody("{\"detail\":\"Task not found.\"}")
             }
-            val current = tasks[existingIndex]
             val toggled = current.copy(isDone = !current.isDone, updatedAt = "2026-03-17T12:05:00Z")
-            tasks[existingIndex] = toggled
+            tasks = replaceTask(tasks, taskId) { toggled }.toMutableList()
+
+            if (!current.isDone && current.repeat != "none") {
+                spawnNextRecurringTask(current)?.let { spawnedTask ->
+                    val parentId = current.parentId
+                    tasks = if (parentId == null) {
+                        (tasks + spawnedTask).toMutableList()
+                    } else {
+                        replaceTask(tasks, parentId) { parent ->
+                            parent.copy(
+                                subtasks = (parent.subtasks + spawnedTask.copy(subtasks = emptyList()))
+                                    .mapIndexed { index, subtask -> subtask.copy(position = index) },
+                            )
+                        }.toMutableList()
+                    }
+                }
+            }
 
             if (disconnectAfterNextToggle) {
                 disconnectAfterNextToggle = false
@@ -853,13 +1022,12 @@ class TaskManagerRepositoryTest {
         private fun handleUpdate(path: String, request: RecordedRequest): MockResponse {
             updateCalls += 1
             val taskId = path.substringAfterLast("/").toInt()
-            val existingIndex = tasks.indexOfFirst { it.id == taskId }
-            if (existingIndex == -1) {
+            val current = findTask(taskId)
+            if (current == null) {
                 return MockResponse().setResponseCode(404).setBody("{\"detail\":\"Task not found.\"}")
             }
 
             val payload = json.decodeFromString(com.taskmanager.android.data.api.ApiTaskUpdatePayload.serializer(), request.body.readUtf8())
-            val current = tasks[existingIndex]
             val updated = current.copy(
                 title = payload.title ?: current.title,
                 description = payload.description,
@@ -872,11 +1040,15 @@ class TaskManagerRepositoryTest {
                 repeat = payload.repeat ?: current.repeat,
                 listId = payload.listId,
                 updatedAt = "2026-03-17T12:06:00Z",
-                subtasks = current.subtasks.map { subtask ->
-                    subtask.copy(listId = payload.listId ?: subtask.listId)
+                subtasks = if (current.parentId == null) {
+                    current.subtasks.map { subtask ->
+                        subtask.copy(listId = payload.listId ?: subtask.listId)
+                    }
+                } else {
+                    current.subtasks
                 },
             )
-            tasks[existingIndex] = updated
+            tasks = replaceTask(tasks, taskId) { updated }.toMutableList()
             return jsonResponse(json.encodeToString(ApiTask.serializer(), updated))
         }
 
@@ -888,7 +1060,7 @@ class TaskManagerRepositoryTest {
             }
 
             val taskId = path.substringAfterLast("/").toInt()
-            tasks = tasks.filterNot { it.id == taskId }.toMutableList()
+            tasks = deleteTask(tasks, taskId).toMutableList()
 
             if (disconnectAfterNextDelete) {
                 disconnectAfterNextDelete = false
@@ -898,10 +1070,111 @@ class TaskManagerRepositoryTest {
             return MockResponse().setResponseCode(204)
         }
 
+        private fun handleSubtaskReorder(path: String, request: RecordedRequest): MockResponse {
+            val parentId = path.substringBeforeLast("/subtasks/reorder").substringAfterLast("/").toInt()
+            val parentTask = findTask(parentId)
+                ?: return MockResponse().setResponseCode(404).setBody("{\"detail\":\"Task not found.\"}")
+            val payload = json.decodeFromString(ApiSubtaskReorderPayload.serializer(), request.body.readUtf8())
+            val currentIds = parentTask.subtasks.map(ApiTask::id)
+            if (payload.subtaskIds.sorted() != currentIds.sorted()) {
+                return MockResponse().setResponseCode(400).setBody("{\"detail\":\"Subtask reorder payload must contain the exact current subtask ids.\"}")
+            }
+
+            val subtasksById = parentTask.subtasks.associateBy(ApiTask::id)
+            val reorderedParent = parentTask.copy(
+                updatedAt = "2026-03-17T12:07:00Z",
+                subtasks = payload.subtaskIds.mapIndexed { index, subtaskId ->
+                    subtasksById.getValue(subtaskId).copy(position = index)
+                },
+            )
+            tasks = replaceTask(tasks, parentId) { reorderedParent }.toMutableList()
+            return jsonResponse(json.encodeToString(ApiTask.serializer(), reorderedParent))
+        }
+
         private fun jsonResponse(body: String, responseCode: Int = 200): MockResponse =
             MockResponse()
                 .setResponseCode(responseCode)
                 .setHeader("Content-Type", "application/json")
                 .setBody(body)
+
+        private fun findTask(taskId: Int): ApiTask? {
+            fun search(taskItems: List<ApiTask>): ApiTask? {
+                taskItems.forEach { task ->
+                    if (task.id == taskId) {
+                        return task
+                    }
+                    search(task.subtasks)?.let { return it }
+                }
+                return null
+            }
+
+            return search(tasks)
+        }
+
+        private fun replaceTask(
+            taskItems: List<ApiTask>,
+            taskId: Int,
+            transform: (ApiTask) -> ApiTask,
+        ): List<ApiTask> = taskItems.map { task ->
+            when {
+                task.id == taskId -> transform(task)
+                task.subtasks.isNotEmpty() -> task.copy(subtasks = replaceTask(task.subtasks, taskId, transform))
+                else -> task
+            }
+        }
+
+        private fun deleteTask(taskItems: List<ApiTask>, taskId: Int): List<ApiTask> = taskItems
+            .filterNot { it.id == taskId }
+            .map { task ->
+                if (task.subtasks.isEmpty()) {
+                    task
+                } else {
+                    task.copy(
+                        subtasks = deleteTask(task.subtasks, taskId).mapIndexed { index, subtask ->
+                            subtask.copy(position = index)
+                        },
+                    )
+                }
+            }
+
+        private fun spawnNextRecurringTask(task: ApiTask): ApiTask? {
+            val dueDate = task.dueDate?.let(LocalDate::parse) ?: return null
+            val nextDueDate = when (task.repeat) {
+                "daily" -> dueDate.plusDays(1)
+                "weekly" -> dueDate.plusWeeks(1)
+                "monthly" -> dueDate.plusMonths(1)
+                "yearly" -> dueDate.plusYears(1)
+                else -> dueDate
+            }
+            val repeatUntil = task.repeatUntil?.let(LocalDate::parse)
+            if (repeatUntil != null && nextDueDate.isAfter(repeatUntil)) {
+                return null
+            }
+
+            val spawnedTaskId = nextTaskId++
+            return task.copy(
+                id = spawnedTaskId,
+                dueDate = nextDueDate.toString(),
+                isDone = false,
+                isPinned = if (task.parentId != null) false else task.isPinned,
+                position = task.parentId?.let { parentId -> findTask(parentId)?.subtasks?.size ?: 0 } ?: tasks.size,
+                createdAt = "2026-03-17T12:05:00Z",
+                updatedAt = "2026-03-17T12:05:00Z",
+                subtasks = if (task.parentId == null) {
+                    task.subtasks.mapIndexed { index, subtask ->
+                        subtask.copy(
+                            id = nextTaskId++,
+                            parentId = spawnedTaskId,
+                            position = index,
+                            isDone = false,
+                            createdAt = "2026-03-17T12:05:00Z",
+                            updatedAt = "2026-03-17T12:05:00Z",
+                        )
+                    }
+                } else {
+                    emptyList()
+                },
+            )
+        }
     }
 }

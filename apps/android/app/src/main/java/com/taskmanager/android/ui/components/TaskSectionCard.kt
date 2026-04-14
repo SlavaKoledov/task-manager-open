@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.domain.insertOrderedIdRelative
@@ -124,41 +125,61 @@ fun TaskSectionCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                when (sectionId) {
-                    TaskSectionId.PINNED -> Icon(
-                        imageVector = Icons.Outlined.PushPin,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                    )
-                    else -> androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(sectionPriorityColor(sectionId), CircleShape),
-                    )
-                }
-                Text(
-                    text = title.uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = sectionPriorityColor(sectionId),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = tasks.size.toString(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (onCreateTaskInSection != null && sectionId != TaskSectionId.PINNED) {
-                    IconButton(onClick = onCreateTaskInSection) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Create task")
+                Surface(
+                    modifier = Modifier
+                        .testTag("section-tag-${sectionId.wire}")
+                        .clickable(onClick = onToggleCollapsed),
+                    shape = RoundedCornerShape(999.dp),
+                    color = sectionPriorityColor(sectionId).copy(alpha = 0.12f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        when (sectionId) {
+                            TaskSectionId.PINNED -> Icon(
+                                imageVector = Icons.Outlined.PushPin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                            )
+                            else -> androidx.compose.foundation.layout.Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(sectionPriorityColor(sectionId), CircleShape),
+                            )
+                        }
+                        Text(
+                            text = title.uppercase(),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = sectionPriorityColor(sectionId),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
                     }
                 }
-                IconButton(onClick = onToggleCollapsed) {
+                Spacer(modifier = Modifier.weight(1f))
+                IconButton(
+                    modifier = Modifier.testTag("section-collapse-${sectionId.wire}"),
+                    onClick = onToggleCollapsed,
+                ) {
                     Icon(
                         imageVector = if (collapsed) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
                         contentDescription = if (collapsed) "Expand" else "Collapse",
                     )
+                }
+                Text(
+                    text = tasks.size.toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("section-count-${sectionId.wire}"),
+                )
+                if (onCreateTaskInSection != null && sectionId != TaskSectionId.PINNED) {
+                    IconButton(
+                        modifier = Modifier.testTag("section-create-${sectionId.wire}"),
+                        onClick = onCreateTaskInSection,
+                    ) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Create task")
+                    }
                 }
             }
 

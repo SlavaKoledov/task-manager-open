@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.data.api.ApiTaskCreatePayload
@@ -562,6 +563,15 @@ private fun CustomRepeatEditor(
     onConfigChange: (TaskCustomRepeatConfig) -> Unit,
     anchorDate: LocalDate,
 ) {
+    var intervalInput by remember { mutableStateOf(config.interval.toString()) }
+    var isEditingInterval by remember { mutableStateOf(false) }
+
+    LaunchedEffect(config.interval, config.unit, isEditingInterval) {
+        if (!isEditingInterval) {
+            intervalInput = config.interval.toString()
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -573,13 +583,24 @@ private fun CustomRepeatEditor(
         ) {
             Text("Every", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(
-                value = config.interval.toString(),
-                    onValueChange = { value ->
+                value = intervalInput,
+                onValueChange = { value ->
                     val digitsOnly = value.filter(Char::isDigit)
+                    if (digitsOnly.isBlank()) {
+                        intervalInput = ""
+                        onConfigChange(config.copy(interval = 1))
+                        return@OutlinedTextField
+                    }
                     val nextInterval = digitsOnly.toIntOrNull()?.takeIf { it >= 1 } ?: return@OutlinedTextField
+                    intervalInput = digitsOnly
                     onConfigChange(config.copy(interval = nextInterval))
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("custom-repeat-interval")
+                    .onFocusChanged { focusState ->
+                        isEditingInterval = focusState.isFocused
+                    },
                 label = { Text("Interval") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

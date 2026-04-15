@@ -1,5 +1,6 @@
 package com.taskmanager.android.ui.screens
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -8,8 +9,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import com.taskmanager.android.data.api.ApiTaskCreatePayload
 import com.taskmanager.android.testTaskItem
 import com.taskmanager.android.testTaskSubtask
 import com.taskmanager.android.ui.theme.TaskManagerTheme
@@ -139,6 +142,57 @@ class TaskEditorScreenTest {
         composeRule.onAllNodesWithText("Choose at least one weekday for a custom weekly repeat.").assertCountEquals(1)
         composeRule.runOnIdle {
             assertThat(createCalls).isEqualTo(0)
+        }
+    }
+
+    @Test
+    fun `custom repeat interval can be cleared and empty save normalizes to one`() {
+        var createdPayload: ApiTaskCreatePayload? = null
+
+        composeRule.setContent {
+            TaskManagerTheme {
+                TaskEditorScreen(
+                    task = null,
+                    lists = emptyList(),
+                    editorContext = TaskEditorContext(
+                        viewTarget = TaskViewTarget.All,
+                        prefilledDueDate = "2026-03-16",
+                    ),
+                    onBack = {},
+                    onCreateTask = {
+                        createdPayload = it
+                        Result.success(Unit)
+                    },
+                    onUpdateTask = { _, _ -> Result.success(Unit) },
+                    onDeleteTask = { _ -> Result.success(Unit) },
+                    onCreateSubtask = { _, _ -> Result.success(Unit) },
+                    onUpdateSubtask = { _, _ -> Result.success(Unit) },
+                    onToggleSubtask = { _ -> Result.success(Unit) },
+                    onDeleteSubtask = { _ -> Result.success(Unit) },
+                    onReorderSubtasks = { _, _ -> Result.success(Unit) },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Task title").performTextInput("Custom interval")
+        composeRule.onNodeWithTag("task-repeat-custom", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("custom-repeat-interval", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.SetText) { it(AnnotatedString("")) }
+
+        composeRule.runOnIdle {
+            val editableText = composeRule.onNodeWithTag("custom-repeat-interval", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .config
+                .getOrElse(SemanticsProperties.EditableText) { AnnotatedString("") }
+                .text
+            assertThat(editableText).isEmpty()
+        }
+
+        composeRule.onNodeWithTag("task-editor-submit").performSemanticsAction(SemanticsActions.OnClick)
+
+        composeRule.runOnIdle {
+            assertThat(createdPayload?.repeatConfig?.interval).isEqualTo(1)
         }
     }
 }

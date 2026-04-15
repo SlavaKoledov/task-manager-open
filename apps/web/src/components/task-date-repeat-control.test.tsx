@@ -128,6 +128,24 @@ describe("TaskDateRepeatControl", () => {
     expect(screen.getAllByText("Every 1 month on 31, skip weekends").length).toBeGreaterThan(0);
   });
 
+  it("lets the custom Every field go blank during editing and restores empty saves to 1", async () => {
+    render(<TaskDateRepeatControlHarness initialValue="2026-03-16" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Mar 16/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Custom/i }));
+
+    const intervalInput = await screen.findByRole("spinbutton");
+    fireEvent.change(intervalInput, { target: { value: "" } });
+
+    expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("");
+
+    fireEvent.mouseDown(document.body);
+    expect(screen.getAllByText("Every 1 day").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Custom/i }));
+    expect((await screen.findByRole("spinbutton") as HTMLInputElement).value).toBe("1");
+  });
+
   it("restores saved custom yearly repeat state and allows month navigation plus date selection", async () => {
     render(
       <TaskDateRepeatControlHarness

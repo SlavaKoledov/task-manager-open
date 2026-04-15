@@ -214,6 +214,8 @@ function TaskDateRepeatControlInner({
   const [customYearlyVisibleMonth, setCustomYearlyVisibleMonth] = useState(() =>
     getInitialCustomYearlyMonth(repeatConfig, value, todayString),
   );
+  const [customIntervalInput, setCustomIntervalInput] = useState("1");
+  const [isEditingCustomInterval, setIsEditingCustomInterval] = useState(false);
 
   const normalizedCustomRepeat = useMemo(
     () => (repeat === "custom" ? ensureCustomRepeatConfig(repeatConfig, value || todayString) : null),
@@ -239,6 +241,14 @@ function TaskDateRepeatControlInner({
   const repeatUntilEnabled = repeat !== "none" && Boolean(value);
   const repeatSummary = getTaskRepeatSummary(repeat, repeatConfig);
 
+  useEffect(() => {
+    if (customPanelOpen && isEditingCustomInterval) {
+      return;
+    }
+
+    setCustomIntervalInput(String(normalizedCustomRepeat?.interval ?? 1));
+  }, [customPanelOpen, isEditingCustomInterval, normalizedCustomRepeat?.interval]);
+
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
@@ -249,6 +259,7 @@ function TaskDateRepeatControlInner({
 
       if (!nextOpen) {
         setCustomPanelOpen(false);
+        setIsEditingCustomInterval(false);
       }
       setOpen(nextOpen);
     },
@@ -322,15 +333,31 @@ function TaskDateRepeatControlInner({
       onRepeatUntilChange("");
     }
     setCustomYearlyVisibleMonth(getInitialCustomYearlyMonth(nextConfig, value, todayString));
+    setCustomIntervalInput(String(nextConfig.interval));
+    setIsEditingCustomInterval(false);
     setCustomPanelOpen(true);
   }, [customAnchorDate, onRepeatChange, onRepeatConfigChange, onRepeatUntilChange, repeatConfig, repeatUntil, todayString, value]);
 
   const handleCustomIntervalChange = useCallback(
     (nextValue: string) => {
-      const parsed = Number.parseInt(nextValue, 10);
-      if (!normalizedCustomRepeat || Number.isNaN(parsed) || parsed < 1) {
+      if (!normalizedCustomRepeat) {
         return;
       }
+
+      setCustomIntervalInput(nextValue);
+      if (!nextValue.trim()) {
+        onRepeatConfigChange({
+          ...normalizedCustomRepeat,
+          interval: 1,
+        });
+        return;
+      }
+
+      const parsed = Number.parseInt(nextValue, 10);
+      if (Number.isNaN(parsed) || parsed < 1) {
+        return;
+      }
+
       onRepeatConfigChange({
         ...normalizedCustomRepeat,
         interval: parsed,
@@ -641,8 +668,15 @@ function TaskDateRepeatControlInner({
                                 <Input
                                   type="number"
                                   min={1}
-                                  value={normalizedCustomRepeat?.interval ?? 1}
+                                  value={customIntervalInput}
                                   className="h-10 rounded-xl px-3 py-2"
+                                  onFocus={() => setIsEditingCustomInterval(true)}
+                                  onBlur={() => {
+                                    setIsEditingCustomInterval(false);
+                                    if (!customIntervalInput.trim()) {
+                                      setCustomIntervalInput(String(normalizedCustomRepeat?.interval ?? 1));
+                                    }
+                                  }}
                                   onChange={(event) => handleCustomIntervalChange(event.target.value)}
                                 />
                               </label>

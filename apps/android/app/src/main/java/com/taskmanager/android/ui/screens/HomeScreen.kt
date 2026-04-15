@@ -35,7 +35,7 @@ import com.taskmanager.android.model.TaskTopLevelReorderScope
 import com.taskmanager.android.model.TaskViewTarget
 import com.taskmanager.android.ui.TaskManagerUiState
 import com.taskmanager.android.data.sync.TaskSyncVisualState
-import com.taskmanager.android.ui.components.TaskSectionCard
+import com.taskmanager.android.ui.components.taskSectionItems
 
 @Composable
 fun HomeScreen(
@@ -93,7 +93,7 @@ fun HomeScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         uiState.activeMoveTask?.let { movingTask ->
             item(key = "move-banner", contentType = "move-banner") {
@@ -166,28 +166,135 @@ fun HomeScreen(
                 }
             }
 
-            items(
-                items = displayedAllGroups,
-                key = { it.id.wire },
-                contentType = { "all-group" },
-            ) { group ->
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            displayedAllGroups.forEach { group ->
+                item(
+                    key = "all-group-header:${group.id.wire}",
+                    contentType = "group-header",
+                ) {
                     Text(
                         text = group.title,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
-                    if (group.totalCount == 0) {
+                }
+
+                if (group.totalCount == 0) {
+                    item(
+                        key = "all-group-empty:${group.id.wire}",
+                        contentType = "empty-state",
+                    ) {
                         EmptyState(text = group.emptyDescription)
+                    }
+                } else {
+                    group.sections.forEach { section ->
+                        taskSectionItems(
+                            lazyKey = "all:${group.id.wire}:${section.id.wire}",
+                            title = section.title,
+                            sectionId = section.id,
+                            tasks = section.tasks,
+                            collapsed = buildTaskSectionCollapseKey(group.id.wire, section.id) in uiState.collapsedSections,
+                            listById = listById,
+                            collapsedTaskIds = uiState.collapsedTaskIds,
+                            expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                            activeMoveTask = uiState.activeMoveTask,
+                            onToggleTask = onToggleTask,
+                            onToggleSubtask = onToggleSubtask,
+                            onEditTask = onEditTask,
+                            onRequestDeleteTask = onRequestDeleteTask,
+                            onToggleSubtasks = onToggleTaskSubtasks,
+                            onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
+                            onStartTaskMove = onStartTaskMove,
+                            onToggleCollapsed = { onToggleSection(buildTaskSectionCollapseKey(group.id.wire, section.id)) },
+                            todayString = todayString,
+                            tomorrowString = tomorrowString,
+                            onCreateTaskInSection = {
+                                onCreateTask(
+                                    TaskEditorContext(
+                                        viewTarget = viewTarget,
+                                        groupId = group.id,
+                                        sectionId = section.id,
+                                    ),
+                                )
+                            },
+                            reorderScope = TaskTopLevelReorderScope.AllScope(
+                                groupId = group.id,
+                                referenceDate = todayString,
+                                sectionId = section.id,
+                            ),
+                            onReorderTasks = onReorderTasks,
+                            onMoveTaskToParent = onMoveTaskToParent,
+                            onMoveTaskToScope = onMoveTaskToScope,
+                        )
+                    }
+
+                    if (showCompleted && group.doneTasks.isNotEmpty()) {
+                        taskSectionItems(
+                            lazyKey = "all:${group.id.wire}:done",
+                            title = "Done",
+                            sectionId = com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT,
+                            tasks = group.doneTasks,
+                            collapsed = buildTaskSectionCollapseKey("${group.id.wire}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT) in uiState.collapsedSections,
+                            listById = listById,
+                            collapsedTaskIds = uiState.collapsedTaskIds,
+                            expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                            activeMoveTask = uiState.activeMoveTask,
+                            onToggleTask = onToggleTask,
+                            onToggleSubtask = onToggleSubtask,
+                            onEditTask = onEditTask,
+                            onRequestDeleteTask = onRequestDeleteTask,
+                            onToggleSubtasks = onToggleTaskSubtasks,
+                            onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
+                            onStartTaskMove = onStartTaskMove,
+                            onToggleCollapsed = {
+                                onToggleSection(
+                                    buildTaskSectionCollapseKey("${group.id.wire}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT),
+                                )
+                            },
+                            todayString = todayString,
+                            tomorrowString = tomorrowString,
+                        )
+                    }
+                }
+            }
+        } else if (viewTarget == TaskViewTarget.Today) {
+            if (todayGroups.isEmpty()) {
+                item {
+                    EmptyState(text = "No tasks in today.")
+                }
+            } else {
+                todayGroups.forEach { group ->
+                    item(
+                        key = "today-group-header:${group.id.wire}",
+                        contentType = "group-header",
+                    ) {
+                        Text(
+                            text = group.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+
+                    if (group.totalCount == 0) {
+                        item(
+                            key = "today-group-empty:${group.id.wire}",
+                            contentType = "empty-state",
+                        ) {
+                            EmptyState(text = group.emptyDescription)
+                        }
                     } else {
                         group.sections.forEach { section ->
-                            TaskSectionCard(
+                            taskSectionItems(
+                                lazyKey = "today:${group.id.wire}:${section.id.wire}",
                                 title = section.title,
                                 sectionId = section.id,
                                 tasks = section.tasks,
                                 collapsed = buildTaskSectionCollapseKey(group.id.wire, section.id) in uiState.collapsedSections,
                                 listById = listById,
                                 collapsedTaskIds = uiState.collapsedTaskIds,
+                                expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                                activeMoveTask = uiState.activeMoveTask,
                                 onToggleTask = onToggleTask,
                                 onToggleSubtask = onToggleSubtask,
                                 onEditTask = onEditTask,
@@ -198,22 +305,24 @@ fun HomeScreen(
                                 onToggleCollapsed = { onToggleSection(buildTaskSectionCollapseKey(group.id.wire, section.id)) },
                                 todayString = todayString,
                                 tomorrowString = tomorrowString,
-                                expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                                activeMoveTask = uiState.activeMoveTask,
-                                onCreateTaskInSection = {
-                                    onCreateTask(
-                                        TaskEditorContext(
-                                            viewTarget = viewTarget,
-                                            groupId = group.id,
-                                            sectionId = section.id,
-                                        ),
+                                onCreateTaskInSection = if (group.id == AllTaskGroupId.TODAY) {
+                                    { onCreateTask(TaskEditorContext(viewTarget = viewTarget, sectionId = section.id)) }
+                                } else {
+                                    null
+                                },
+                                reorderScope = if (group.id == AllTaskGroupId.OVERDUE) {
+                                    TaskTopLevelReorderScope.AllScope(
+                                        groupId = AllTaskGroupId.OVERDUE,
+                                        referenceDate = todayString,
+                                        sectionId = section.id,
+                                    )
+                                } else {
+                                    TaskTopLevelReorderScope.DateScope(
+                                        view = com.taskmanager.android.model.ViewMode.TODAY,
+                                        targetDate = todayString,
+                                        sectionId = section.id,
                                     )
                                 },
-                                reorderScope = TaskTopLevelReorderScope.AllScope(
-                                    groupId = group.id,
-                                    referenceDate = todayString,
-                                    sectionId = section.id,
-                                ),
                                 onReorderTasks = onReorderTasks,
                                 onMoveTaskToParent = onMoveTaskToParent,
                                 onMoveTaskToScope = onMoveTaskToScope,
@@ -221,13 +330,16 @@ fun HomeScreen(
                         }
 
                         if (showCompleted && group.doneTasks.isNotEmpty()) {
-                            TaskSectionCard(
+                            taskSectionItems(
+                                lazyKey = "today:${group.id.wire}:done",
                                 title = "Done",
                                 sectionId = com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT,
                                 tasks = group.doneTasks,
                                 collapsed = buildTaskSectionCollapseKey("${group.id.wire}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT) in uiState.collapsedSections,
                                 listById = listById,
                                 collapsedTaskIds = uiState.collapsedTaskIds,
+                                expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                                activeMoveTask = uiState.activeMoveTask,
                                 onToggleTask = onToggleTask,
                                 onToggleSubtask = onToggleSubtask,
                                 onEditTask = onEditTask,
@@ -242,103 +354,7 @@ fun HomeScreen(
                                 },
                                 todayString = todayString,
                                 tomorrowString = tomorrowString,
-                                expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                                activeMoveTask = uiState.activeMoveTask,
                             )
-                        }
-                    }
-                }
-            }
-        } else if (viewTarget == TaskViewTarget.Today) {
-            if (todayGroups.isEmpty()) {
-                item {
-                    EmptyState(text = "No tasks in today.")
-                }
-            } else {
-                items(
-                    items = todayGroups,
-                    key = { "today-group:${it.id.wire}" },
-                    contentType = { "today-group" },
-                ) { group ->
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = group.title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        if (group.totalCount == 0) {
-                            EmptyState(text = group.emptyDescription)
-                        } else {
-                            group.sections.forEach { section ->
-                                TaskSectionCard(
-                                    title = section.title,
-                                    sectionId = section.id,
-                                    tasks = section.tasks,
-                                    collapsed = buildTaskSectionCollapseKey(group.id.wire, section.id) in uiState.collapsedSections,
-                                    listById = listById,
-                                    collapsedTaskIds = uiState.collapsedTaskIds,
-                                    onToggleTask = onToggleTask,
-                                    onToggleSubtask = onToggleSubtask,
-                                    onEditTask = onEditTask,
-                                    onRequestDeleteTask = onRequestDeleteTask,
-                                    onToggleSubtasks = onToggleTaskSubtasks,
-                                    onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
-                                    onStartTaskMove = onStartTaskMove,
-                                    onToggleCollapsed = { onToggleSection(buildTaskSectionCollapseKey(group.id.wire, section.id)) },
-                                    todayString = todayString,
-                                    tomorrowString = tomorrowString,
-                                    expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                                    activeMoveTask = uiState.activeMoveTask,
-                                    onCreateTaskInSection = if (group.id == AllTaskGroupId.TODAY) {
-                                        { onCreateTask(TaskEditorContext(viewTarget = viewTarget, sectionId = section.id)) }
-                                    } else {
-                                        null
-                                    },
-                                    reorderScope = if (group.id == AllTaskGroupId.OVERDUE) {
-                                        TaskTopLevelReorderScope.AllScope(
-                                            groupId = AllTaskGroupId.OVERDUE,
-                                            referenceDate = todayString,
-                                            sectionId = section.id,
-                                        )
-                                    } else {
-                                        TaskTopLevelReorderScope.DateScope(
-                                            view = com.taskmanager.android.model.ViewMode.TODAY,
-                                            targetDate = todayString,
-                                            sectionId = section.id,
-                                        )
-                                    },
-                                    onReorderTasks = onReorderTasks,
-                                    onMoveTaskToParent = onMoveTaskToParent,
-                                    onMoveTaskToScope = onMoveTaskToScope,
-                                )
-                            }
-
-                            if (showCompleted && group.doneTasks.isNotEmpty()) {
-                                TaskSectionCard(
-                                    title = "Done",
-                                    sectionId = com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT,
-                                    tasks = group.doneTasks,
-                                    collapsed = buildTaskSectionCollapseKey("${group.id.wire}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT) in uiState.collapsedSections,
-                                    listById = listById,
-                                    collapsedTaskIds = uiState.collapsedTaskIds,
-                                    onToggleTask = onToggleTask,
-                                    onToggleSubtask = onToggleSubtask,
-                                    onEditTask = onEditTask,
-                                    onRequestDeleteTask = onRequestDeleteTask,
-                                    onToggleSubtasks = onToggleTaskSubtasks,
-                                    onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
-                                    onStartTaskMove = onStartTaskMove,
-                                    onToggleCollapsed = {
-                                        onToggleSection(
-                                            buildTaskSectionCollapseKey("${group.id.wire}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT),
-                                        )
-                                    },
-                                    todayString = todayString,
-                                    tomorrowString = tomorrowString,
-                                    expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                                    activeMoveTask = uiState.activeMoveTask,
-                                )
-                            }
                         }
                     }
                 }
@@ -351,11 +367,7 @@ fun HomeScreen(
                     EmptyState(text = "No tasks in ${viewTarget.title.lowercase()}.")
                 }
             } else {
-                items(
-                    items = visibleCollection.sections,
-                    key = { it.id.wire },
-                    contentType = { "task-section" },
-                ) { section ->
+                visibleCollection.sections.forEach { section ->
                     val sectionScope = when (viewTarget) {
                         TaskViewTarget.Inbox -> TaskTopLevelReorderScope.InboxScope(section.id)
                         TaskViewTarget.Today -> TaskTopLevelReorderScope.DateScope(
@@ -376,12 +388,15 @@ fun HomeScreen(
                         TaskViewTarget.Calendar -> null
                     }
 
-                    TaskSectionCard(
+                    taskSectionItems(
+                        lazyKey = "${viewTarget.mode.name.lowercase()}:${section.id.wire}",
                         title = section.title,
                         sectionId = section.id,
                         tasks = section.tasks,
                         collapsed = buildTaskSectionCollapseKey(viewTarget.mode.name.lowercase(), section.id) in uiState.collapsedSections,
                         listById = listById,
+                        expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                        activeMoveTask = uiState.activeMoveTask,
                         collapsedTaskIds = uiState.collapsedTaskIds,
                         onToggleTask = onToggleTask,
                         onToggleSubtask = onToggleSubtask,
@@ -393,8 +408,6 @@ fun HomeScreen(
                         onToggleCollapsed = { onToggleSection(buildTaskSectionCollapseKey(viewTarget.mode.name.lowercase(), section.id)) },
                         todayString = todayString,
                         tomorrowString = tomorrowString,
-                        expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                        activeMoveTask = uiState.activeMoveTask,
                         onCreateTaskInSection = {
                             onCreateTask(TaskEditorContext(viewTarget = viewTarget, sectionId = section.id))
                         },
@@ -406,37 +419,36 @@ fun HomeScreen(
                 }
 
                 if (showCompleted && visibleCollection.doneTasks.isNotEmpty()) {
-                    item {
-                        TaskSectionCard(
-                            title = "Done",
-                            sectionId = com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT,
-                            tasks = visibleCollection.doneTasks,
-                            collapsed = buildTaskSectionCollapseKey("${viewTarget.mode.name.lowercase()}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT) in uiState.collapsedSections,
-                            listById = listById,
-                            collapsedTaskIds = uiState.collapsedTaskIds,
-                            onToggleTask = onToggleTask,
-                            onToggleSubtask = onToggleSubtask,
-                            onEditTask = onEditTask,
-                            onRequestDeleteTask = onRequestDeleteTask,
-                            onToggleSubtasks = onToggleTaskSubtasks,
-                            onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
-                            onStartTaskMove = onStartTaskMove,
-                            onToggleCollapsed = {
-                                onToggleSection(
-                                    buildTaskSectionCollapseKey("${viewTarget.mode.name.lowercase()}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT),
-                                )
-                            },
-                            todayString = todayString,
-                            tomorrowString = tomorrowString,
-                            expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
-                            activeMoveTask = uiState.activeMoveTask,
-                        )
-                    }
+                    taskSectionItems(
+                        lazyKey = "${viewTarget.mode.name.lowercase()}:done",
+                        title = "Done",
+                        sectionId = com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT,
+                        tasks = visibleCollection.doneTasks,
+                        collapsed = buildTaskSectionCollapseKey("${viewTarget.mode.name.lowercase()}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT) in uiState.collapsedSections,
+                        listById = listById,
+                        collapsedTaskIds = uiState.collapsedTaskIds,
+                        expandedSubtaskPreviewIds = uiState.expandedSubtaskPreviewIds,
+                        activeMoveTask = uiState.activeMoveTask,
+                        onToggleTask = onToggleTask,
+                        onToggleSubtask = onToggleSubtask,
+                        onEditTask = onEditTask,
+                        onRequestDeleteTask = onRequestDeleteTask,
+                        onToggleSubtasks = onToggleTaskSubtasks,
+                        onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
+                        onStartTaskMove = onStartTaskMove,
+                        onToggleCollapsed = {
+                            onToggleSection(
+                                buildTaskSectionCollapseKey("${viewTarget.mode.name.lowercase()}:done", com.taskmanager.android.model.TaskSectionId.NOT_URGENT_UNIMPORTANT),
+                            )
+                        },
+                        todayString = todayString,
+                        tomorrowString = tomorrowString,
+                    )
                 }
             }
         }
 
-        item {
+        item(key = "home-bottom-spacer", contentType = "spacer") {
             Spacer(modifier = Modifier.height(80.dp))
         }
     }

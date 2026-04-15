@@ -3,6 +3,7 @@ package com.taskmanager.android.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -156,48 +157,50 @@ fun LazyListScope.taskSectionItems(
                 key = "task:$lazyKey:${task.id}",
                 contentType = "task-card",
             ) {
-                TaskCard(
-                    task = task,
-                    list = task.listId?.let(listById::get),
-                    todayString = todayString,
-                    tomorrowString = tomorrowString,
-                    isSubtasksCollapsed = task.id in collapsedTaskIds,
-                    onToggleTask = onToggleTask,
-                    onToggleSubtask = onToggleSubtask,
-                    onEditTask = onEditTask,
-                    onRequestDeleteTask = onRequestDeleteTask,
-                    onToggleSubtasks = onToggleSubtasks,
-                    isExpandedSubtaskPreview = task.id in expandedSubtaskPreviewIds,
-                    onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
-                    onStartMoveTask = { movingTask ->
-                        onStartTaskMove(
-                            movingTask.id,
-                            movingTask.parentId,
-                            movingTask.title,
-                            movingTask.subtasks.isNotEmpty(),
-                        )
-                    },
-                    onStartMoveSubtask = { movingSubtask ->
-                        onStartTaskMove(
-                            movingSubtask.id,
-                            task.id,
-                            movingSubtask.title,
-                            false,
-                        )
-                    },
-                    isMoveSource = activeMoveTaskId == task.id,
-                    canDropInside = activeMoveTask != null && activeMoveTaskId != task.id && !activeMoveTask.hasSubtasks && !task.isDone,
-                    onDropInside = if (activeMoveTask != null && activeMoveTaskId != task.id && !activeMoveTask.hasSubtasks && !task.isDone) {
-                        { submitMoveIntoTask(task) }
-                    } else {
-                        null
-                    },
-                    onDropAfterSubtask = if (activeMoveTask != null && !activeMoveTask.hasSubtasks && !task.isDone) {
-                        { targetSubtask -> submitMoveAfterSubtask(task, targetSubtask) }
-                    } else {
-                        null
-                    },
-                )
+                Box(modifier = Modifier.padding(start = 8.dp)) {
+                    TaskCard(
+                        task = task,
+                        list = task.listId?.let(listById::get),
+                        todayString = todayString,
+                        tomorrowString = tomorrowString,
+                        isSubtasksCollapsed = task.id in collapsedTaskIds,
+                        onToggleTask = onToggleTask,
+                        onToggleSubtask = onToggleSubtask,
+                        onEditTask = onEditTask,
+                        onRequestDeleteTask = onRequestDeleteTask,
+                        onToggleSubtasks = onToggleSubtasks,
+                        isExpandedSubtaskPreview = task.id in expandedSubtaskPreviewIds,
+                        onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
+                        onStartMoveTask = { movingTask ->
+                            onStartTaskMove(
+                                movingTask.id,
+                                movingTask.parentId,
+                                movingTask.title,
+                                movingTask.subtasks.isNotEmpty(),
+                            )
+                        },
+                        onStartMoveSubtask = { movingSubtask ->
+                            onStartTaskMove(
+                                movingSubtask.id,
+                                task.id,
+                                movingSubtask.title,
+                                false,
+                            )
+                        },
+                        isMoveSource = activeMoveTaskId == task.id,
+                        canDropInside = activeMoveTask != null && activeMoveTaskId != task.id && !activeMoveTask.hasSubtasks && !task.isDone,
+                        onDropInside = if (activeMoveTask != null && activeMoveTaskId != task.id && !activeMoveTask.hasSubtasks && !task.isDone) {
+                            { submitMoveIntoTask(task) }
+                        } else {
+                            null
+                        },
+                        onDropAfterSubtask = if (activeMoveTask != null && !activeMoveTask.hasSubtasks && !task.isDone) {
+                            { targetSubtask -> submitMoveAfterSubtask(task, targetSubtask) }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
 
             if (canMoveIntoSection) {

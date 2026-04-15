@@ -92,6 +92,7 @@ fun TaskEditorScreen(
     task: TaskItem?,
     lists: List<ListItem>,
     editorContext: TaskEditorContext,
+    showDeleteConfirmationOnLaunch: Boolean = false,
     onBack: () -> Unit,
     onCreateTask: suspend (ApiTaskCreatePayload) -> Result<Unit>,
     onUpdateTask: suspend (Int, kotlinx.serialization.json.JsonObject) -> Result<Unit>,
@@ -142,6 +143,12 @@ fun TaskEditorScreen(
         createSubtasks = emptyList()
         localSubtaskId = -1L
         errorMessage = null
+    }
+
+    LaunchedEffect(showDeleteConfirmationOnLaunch, task?.id) {
+        if (showDeleteConfirmationOnLaunch && task != null) {
+            showDeleteConfirmation = true
+        }
     }
 
     if (showReminderTimePicker) {

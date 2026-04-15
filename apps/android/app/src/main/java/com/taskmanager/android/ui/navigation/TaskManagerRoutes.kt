@@ -13,12 +13,12 @@ object TaskManagerRoutes {
     const val MANAGE_LISTS = "lists/manage"
     const val SETTINGS = "settings"
     const val NOTIFICATIONS = "settings/notifications"
-    const val EDIT_TASK = "task/{taskId}"
+    const val EDIT_TASK = "task/{taskId}?confirmDelete={confirmDelete}"
     const val CREATE_TASK = "task/create?mode={mode}&listId={listId}&groupId={groupId}&sectionId={sectionId}&dueDate={dueDate}"
 
     fun list(listId: Int): String = "list/$listId"
 
-    fun editTask(taskId: Int): String = "task/$taskId"
+    fun editTask(taskId: Int, confirmDelete: Boolean = false): String = "task/$taskId?confirmDelete=$confirmDelete"
 
     fun createTask(context: TaskEditorContext): String {
         val mode = context.viewTarget.mode.name.lowercase()

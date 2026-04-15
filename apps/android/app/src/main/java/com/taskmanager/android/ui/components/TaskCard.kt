@@ -65,12 +65,9 @@ fun TaskCard(
     onToggleTask: (TaskItem) -> Unit,
     onToggleSubtask: (TaskSubtask) -> Unit,
     onEditTask: (TaskItem) -> Unit,
+    onRequestDeleteTask: (TaskItem) -> Unit,
     onToggleSubtasks: (Int) -> Unit,
     onToggleExpandedSubtaskPreview: (Int) -> Unit,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onStartMoveTask: ((TaskItem) -> Unit)? = null,
     onStartMoveSubtask: ((TaskSubtask) -> Unit)? = null,
     isMoveSource: Boolean = false,
@@ -225,26 +222,13 @@ fun TaskCard(
                                 },
                             )
                         }
-                        if (canMoveUp) {
-                            DropdownMenuItem(
-                                text = { Text("Move up") },
-                                leadingIcon = { Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onMoveUp()
-                                },
-                            )
-                        }
-                        if (canMoveDown) {
-                            DropdownMenuItem(
-                                text = { Text("Move down") },
-                                leadingIcon = { Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onMoveDown()
-                                },
-                            )
-                        }
+                        DropdownMenuItem(
+                            text = { Text("Delete task") },
+                            onClick = {
+                                menuExpanded = false
+                                onRequestDeleteTask(task)
+                            },
+                        )
                     }
                 }
             }

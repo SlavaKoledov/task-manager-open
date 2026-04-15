@@ -57,6 +57,7 @@ fun TaskSectionCard(
     onToggleTask: (TaskItem) -> Unit,
     onToggleSubtask: (TaskSubtask) -> Unit,
     onEditTask: (TaskItem) -> Unit,
+    onRequestDeleteTask: (TaskItem) -> Unit,
     onToggleSubtasks: (Int) -> Unit,
     onToggleExpandedSubtaskPreview: (Int) -> Unit,
     onStartTaskMove: (Int, Int?, String, Boolean) -> Unit,
@@ -71,7 +72,6 @@ fun TaskSectionCard(
 ) {
     if (tasks.isEmpty()) return
 
-    val canReorder = reorderScope != null && tasks.size > 1
     val canMoveIntoSection = activeMoveTask != null && reorderScope != null
     val activeMoveTaskId = activeMoveTask?.taskId
     val sectionTaskIds = remember(tasks) { tasks.map(TaskItem::id) }
@@ -225,25 +225,10 @@ fun TaskSectionCard(
                                 onToggleTask = onToggleTask,
                                 onToggleSubtask = onToggleSubtask,
                                 onEditTask = onEditTask,
+                                onRequestDeleteTask = onRequestDeleteTask,
                                 onToggleSubtasks = onToggleSubtasks,
                                 isExpandedSubtaskPreview = task.id in expandedSubtaskPreviewIds,
                                 onToggleExpandedSubtaskPreview = onToggleExpandedSubtaskPreview,
-                                canMoveUp = canReorder && index > 0,
-                                canMoveDown = canReorder && index < tasks.lastIndex,
-                                onMoveUp = {
-                                    if (reorderScope == null || index == 0) return@TaskCard
-                                    val reorderedIds = tasks.map(TaskItem::id).toMutableList().apply {
-                                        add(index - 1, removeAt(index))
-                                    }
-                                    onReorderTasks(reorderScope, reorderedIds)
-                                },
-                                onMoveDown = {
-                                    if (reorderScope == null || index >= tasks.lastIndex) return@TaskCard
-                                    val reorderedIds = tasks.map(TaskItem::id).toMutableList().apply {
-                                        add(index + 1, removeAt(index))
-                                    }
-                                    onReorderTasks(reorderScope, reorderedIds)
-                                },
                                 onStartMoveTask = { movingTask ->
                                     onStartTaskMove(
                                         movingTask.id,

@@ -242,14 +242,19 @@ fun TaskManagerApp(
         }
         composable(
             route = TaskManagerRoutes.EDIT_TASK,
-            arguments = listOf(navArgument("taskId") { type = NavType.IntType }),
+            arguments = listOf(
+                navArgument("taskId") { type = NavType.IntType },
+                navArgument("confirmDelete") { type = NavType.BoolType; defaultValue = false },
+            ),
         ) { backStackEntry ->
             val taskId = backStackEntry.arguments?.getInt("taskId") ?: return@composable
+            val confirmDelete = backStackEntry.arguments?.getBoolean("confirmDelete") ?: false
             val task = viewModel.findTask(taskId)
             TaskEditorScreen(
                 task = task,
                 lists = uiState.lists,
                 editorContext = TaskEditorContext(viewTarget = TaskViewTarget.All),
+                showDeleteConfirmationOnLaunch = confirmDelete,
                 onBack = { navController.popBackStack() },
                 onCreateTask = { Result.success(Unit) },
                 onUpdateTask = { id, payload -> viewModel.updateTask(id, payload) },
@@ -476,6 +481,7 @@ private fun HomeRoute(
                     onSelectAllGroup = viewModel::setSelectedAllGroup,
                     onCreateTask = { context -> navController.navigate(TaskManagerRoutes.createTask(context)) },
                     onEditTask = { task -> navController.navigate(TaskManagerRoutes.editTask(task.id)) },
+                    onRequestDeleteTask = { task -> navController.navigate(TaskManagerRoutes.editTask(task.id, confirmDelete = true)) },
                     onToggleTask = { task ->
                         coroutineScope.launch { viewModel.toggleTask(task.id) }
                     },

@@ -147,7 +147,7 @@ fun TaskSectionCard(
                             onClickLabel = collapseDescription,
                             onClick = onToggleCollapsed,
                         )
-                        .padding(vertical = 4.dp, end = 4.dp),
+                        .padding(top = 4.dp, bottom = 4.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Surface(

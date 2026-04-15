@@ -1,9 +1,11 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CalendarDays, Check, ChevronLeft, ChevronRight, Repeat2, X } from "lucide-react";
 
+import { PopoverPanel } from "@/components/popover-panel";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import {
   addDays,
   formatDueDateLabel,
@@ -11,7 +13,7 @@ import {
   getTomorrowDateString,
   parseLocalDateString,
 } from "@/lib/date";
-import { getTaskRepeatOption, TASK_REPEAT_OPTIONS } from "@/lib/task-options";
+import { TASK_REPEAT_OPTIONS } from "@/lib/task-options";
 import {
   addCalendarMonths,
   buildRecurringPreviewDates,
@@ -19,17 +21,28 @@ import {
   getCalendarDays,
   getCalendarMonthStart,
 } from "@/lib/task-calendar";
-import type { TaskRepeat } from "@/lib/types";
+import {
+  ensureCustomRepeatConfig,
+  getTaskRepeatSummary,
+  ISO_WEEKDAYS,
+  resolveSafeDate,
+  switchCustomRepeatUnit,
+  WEEKDAY_LETTERS,
+  WEEKDAY_NAMES,
+} from "@/lib/task-repeat";
+import type { TaskCustomRepeatConfig, TaskCustomRepeatUnit, TaskRepeat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type TaskDateRepeatControlProps = {
   value: string;
   reminderTime: string;
   repeat: TaskRepeat;
+  repeatConfig: TaskCustomRepeatConfig | null;
   repeatUntil: string;
   onDateChange: (nextDate: string) => void;
   onReminderTimeChange: (nextTime: string) => void;
   onRepeatChange: (nextRepeat: TaskRepeat) => void;
+  onRepeatConfigChange: (nextRepeatConfig: TaskCustomRepeatConfig | null) => void;
   onRepeatUntilChange: (nextDate: string) => void;
   className?: string;
 };
@@ -38,6 +51,9 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const monthFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
   year: "numeric",
+});
+const yearlyMonthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
 });
 const selectedDateFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -122,30 +138,93 @@ function renderCalendarGrid({
   );
 }
 
+function getInitialCustomYearlyMonth(
+  repeatConfig: TaskCustomRepeatConfig | null,
+  dueDate: string,
+  todayString: string,
+): Date {
+  if (repeatConfig?.unit === "year" && repeatConfig.month) {
+    return new Date(2024, repeatConfig.month - 1, 1);
+  }
+
+  const anchorDate = parseLocalDateString(dueDate) ?? parseLocalDateString(todayString) ?? new Date(2024, 0, 1);
+  return new Date(2024, anchorDate.getMonth(), 1);
+}
+
+function renderMonthDaySelector(
+  selectedDay: number | null,
+  onSelect: (day: number) => void,
+) {
+  return (
+    <div className="grid grid-cols-7 gap-2">
+      {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
+        const selected = selectedDay === day;
+        return (
+          <button
+            key={day}
+            type="button"
+            aria-pressed={selected}
+            className={cn(
+              "flex h-9 items-center justify-center rounded-[0.95rem] border text-sm font-medium transition-colors",
+              selected
+                ? "border-primary/45 bg-primary text-primary-foreground"
+                : "border-border/80 bg-card/70 text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => onSelect(day)}
+          >
+            {day}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function getSelectedYearlyDateString(repeatConfig: TaskCustomRepeatConfig | null): string {
+  if (repeatConfig?.unit !== "year" || repeatConfig.month == null || repeatConfig.day == null) {
+    return "";
+  }
+
+  return getLocalDateString(resolveSafeDate(2024, repeatConfig.month, repeatConfig.day));
+}
+
 function TaskDateRepeatControlInner({
   value,
   reminderTime,
   repeat,
+  repeatConfig,
   repeatUntil,
   onDateChange,
   onReminderTimeChange,
   onRepeatChange,
+  onRepeatConfigChange,
   onRepeatUntilChange,
   className,
 }: TaskDateRepeatControlProps) {
   const [open, setOpen] = useState(false);
   const todayString = getLocalDateString();
   const tomorrowString = getTomorrowDateString();
+  const customButtonRef = useRef<HTMLButtonElement | null>(null);
+  const customPanelRef = useRef<HTMLDivElement | null>(null);
   const [visibleMonth, setVisibleMonth] = useState(() => getInitialVisibleMonth(value, todayString));
   const [repeatUntilVisibleMonth, setRepeatUntilVisibleMonth] = useState(() =>
     getInitialVisibleMonth(repeatUntil || value, todayString),
   );
+  const [customPanelOpen, setCustomPanelOpen] = useState(false);
+  const [customYearlyVisibleMonth, setCustomYearlyVisibleMonth] = useState(() =>
+    getInitialCustomYearlyMonth(repeatConfig, value, todayString),
+  );
 
+  const normalizedCustomRepeat = useMemo(
+    () => (repeat === "custom" ? ensureCustomRepeatConfig(repeatConfig, value || todayString) : null),
+    [repeat, repeatConfig, todayString, value],
+  );
   const calendarDays = useMemo(() => getCalendarDays(visibleMonth), [visibleMonth]);
+  const yearlyCalendarDays = useMemo(() => getCalendarDays(customYearlyVisibleMonth), [customYearlyVisibleMonth]);
   const repeatUntilCalendarDays = useMemo(() => getCalendarDays(repeatUntilVisibleMonth), [repeatUntilVisibleMonth]);
   const recurringPreviewDates = useMemo(
-    () => buildRecurringPreviewDates(value, repeat, repeatUntil),
-    [repeat, repeatUntil, value],
+    () => buildRecurringPreviewDates(value, repeat, repeatConfig, repeatUntil),
+    [repeat, repeatConfig, repeatUntil, value],
   );
   const visibleRecurringPreviewDates = useMemo(
     () => buildVisibleRecurringPreviewDateSet(recurringPreviewDates, calendarDays),
@@ -158,18 +237,45 @@ function TaskDateRepeatControlInner({
   const selectedRepeatUntilLabel =
     repeatUntil && selectedRepeatUntilDate ? selectedDateFormatter.format(selectedRepeatUntilDate) : "No end date";
   const repeatUntilEnabled = repeat !== "none" && Boolean(value);
+  const repeatSummary = getTaskRepeatSummary(repeat, repeatConfig);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
         setVisibleMonth(getInitialVisibleMonth(value, todayString));
         setRepeatUntilVisibleMonth(getInitialVisibleMonth(repeatUntil || value, todayString));
+        setCustomYearlyVisibleMonth(getInitialCustomYearlyMonth(repeatConfig, value, todayString));
       }
 
+      if (!nextOpen) {
+        setCustomPanelOpen(false);
+      }
       setOpen(nextOpen);
     },
-    [repeatUntil, todayString, value],
+    [repeatConfig, repeatUntil, todayString, value],
   );
+
+  useEffect(() => {
+    if (!customPanelOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (customButtonRef.current?.contains(target) || customPanelRef.current?.contains(target)) {
+        return;
+      }
+
+      setCustomPanelOpen(false);
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [customPanelOpen]);
 
   const handleQuickDate = useCallback(
     (nextDate: string) => {
@@ -187,11 +293,125 @@ function TaskDateRepeatControlInner({
     onReminderTimeChange("");
     onRepeatChange("none");
     onRepeatUntilChange("");
+    setCustomPanelOpen(false);
     setVisibleMonth(getInitialVisibleMonth("", todayString));
     setRepeatUntilVisibleMonth(getInitialVisibleMonth("", todayString));
   }, [onDateChange, onReminderTimeChange, onRepeatChange, onRepeatUntilChange, todayString]);
 
   const dueDateObject = value ? parseLocalDateString(value) : null;
+  const customAnchorDate = value || todayString;
+
+  const handleSimpleRepeatSelect = useCallback(
+    (nextRepeat: Extract<TaskRepeat, "none" | "daily" | "weekly" | "monthly" | "yearly">) => {
+      onRepeatChange(nextRepeat);
+      if (nextRepeat === "none") {
+        onRepeatUntilChange("");
+      } else if (value && repeatUntil && repeatUntil < value) {
+        onRepeatUntilChange("");
+      }
+      setCustomPanelOpen(false);
+    },
+    [onRepeatChange, onRepeatUntilChange, repeatUntil, value],
+  );
+
+  const handleCustomRepeatOpen = useCallback(() => {
+    const nextConfig = ensureCustomRepeatConfig(repeatConfig, customAnchorDate);
+    onRepeatChange("custom");
+    onRepeatConfigChange(nextConfig);
+    if (value && repeatUntil && repeatUntil < value) {
+      onRepeatUntilChange("");
+    }
+    setCustomYearlyVisibleMonth(getInitialCustomYearlyMonth(nextConfig, value, todayString));
+    setCustomPanelOpen(true);
+  }, [customAnchorDate, onRepeatChange, onRepeatConfigChange, onRepeatUntilChange, repeatConfig, repeatUntil, todayString, value]);
+
+  const handleCustomIntervalChange = useCallback(
+    (nextValue: string) => {
+      const parsed = Number.parseInt(nextValue, 10);
+      if (!normalizedCustomRepeat || Number.isNaN(parsed) || parsed < 1) {
+        return;
+      }
+      onRepeatConfigChange({
+        ...normalizedCustomRepeat,
+        interval: parsed,
+      });
+    },
+    [normalizedCustomRepeat, onRepeatConfigChange],
+  );
+
+  const handleCustomUnitChange = useCallback(
+    (nextUnit: TaskCustomRepeatUnit) => {
+      const nextConfig = switchCustomRepeatUnit(normalizedCustomRepeat, nextUnit, customAnchorDate);
+      onRepeatConfigChange(nextConfig);
+      if (nextUnit === "year") {
+        setCustomYearlyVisibleMonth(getInitialCustomYearlyMonth(nextConfig, value, todayString));
+      }
+    },
+    [customAnchorDate, normalizedCustomRepeat, onRepeatConfigChange, todayString, value],
+  );
+
+  const handleCustomSkipWeekendsChange = useCallback(
+    (nextChecked: boolean) => {
+      if (!normalizedCustomRepeat) {
+        return;
+      }
+
+      onRepeatConfigChange({
+        ...normalizedCustomRepeat,
+        skip_weekends: nextChecked,
+      });
+    },
+    [normalizedCustomRepeat, onRepeatConfigChange],
+  );
+
+  const handleCustomWeekdayToggle = useCallback(
+    (weekday: number) => {
+      if (!normalizedCustomRepeat || normalizedCustomRepeat.unit !== "week") {
+        return;
+      }
+
+      const nextWeekdays = normalizedCustomRepeat.weekdays.includes(weekday)
+        ? normalizedCustomRepeat.weekdays.filter((currentWeekday) => currentWeekday !== weekday)
+        : [...normalizedCustomRepeat.weekdays, weekday].sort((left, right) => left - right);
+
+      onRepeatConfigChange({
+        ...normalizedCustomRepeat,
+        weekdays: nextWeekdays,
+      });
+    },
+    [normalizedCustomRepeat, onRepeatConfigChange],
+  );
+
+  const handleCustomMonthDaySelect = useCallback(
+    (day: number) => {
+      if (!normalizedCustomRepeat) {
+        return;
+      }
+
+      onRepeatConfigChange({
+        ...normalizedCustomRepeat,
+        month_day: day,
+      });
+    },
+    [normalizedCustomRepeat, onRepeatConfigChange],
+  );
+
+  const handleCustomYearlyDateSelect = useCallback(
+    (dateString: string) => {
+      const selectedDate = parseLocalDateString(dateString);
+      if (!normalizedCustomRepeat || !selectedDate) {
+        return;
+      }
+
+      onRepeatConfigChange({
+        ...normalizedCustomRepeat,
+        month: selectedDate.getMonth() + 1,
+        day: selectedDate.getDate(),
+      });
+      setCustomYearlyVisibleMonth(new Date(2024, selectedDate.getMonth(), 1));
+    },
+    [normalizedCustomRepeat, onRepeatConfigChange],
+  );
 
   return (
     <div className={cn("relative", className)}>
@@ -203,7 +423,7 @@ function TaskDateRepeatControlInner({
         <CalendarDays className="h-4 w-4 text-primary" />
         <span>{value ? formatDueDateLabel(value, todayString, tomorrowString) : "No date"}</span>
         <span className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {getTaskRepeatOption(repeat).label}
+          {repeatSummary}
         </span>
       </button>
 
@@ -228,7 +448,7 @@ function TaskDateRepeatControlInner({
                     </p>
                     <p className="mt-1 text-sm font-semibold text-foreground">{selectedDateLabel}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {repeat === "none" ? "One-time task" : getTaskRepeatOption(repeat).label}
+                      {repeat === "none" ? "One-time task" : repeatSummary}
                     </p>
                   </div>
 
@@ -357,40 +577,201 @@ function TaskDateRepeatControlInner({
                     <span>Repeat</span>
                   </div>
 
-                  <div className="grid gap-2">
-                    {TASK_REPEAT_OPTIONS.map((option) => {
-                      const disabled = !value && option.value !== "none";
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {TASK_REPEAT_OPTIONS.filter((option) => option.value !== "custom").map((option) => {
+                        const disabled = !value && option.value !== "none";
 
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={cn(
-                            "flex items-center justify-between rounded-[1rem] border px-3 py-2 text-left text-sm transition-colors",
-                            repeat === option.value
-                              ? "border-primary/45 bg-primary/10 text-foreground"
-                              : "border-border/80 bg-card/70 text-muted-foreground hover:text-foreground",
-                            disabled && "cursor-not-allowed opacity-45",
-                          )}
-                          disabled={disabled}
-                          onClick={() => {
-                            onRepeatChange(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={cn(
+                              "flex items-center justify-between rounded-[1rem] border px-3 py-2 text-left text-sm transition-colors",
+                              repeat === option.value
+                                ? "border-primary/45 bg-primary/10 text-foreground"
+                                : "border-border/80 bg-card/70 text-muted-foreground hover:text-foreground",
+                              disabled && "cursor-not-allowed opacity-45",
+                            )}
+                            disabled={disabled}
+                            onClick={() => handleSimpleRepeatSelect(option.value as Extract<TaskRepeat, "none" | "daily" | "weekly" | "monthly" | "yearly">)}
+                          >
+                            <span>{option.label}</span>
+                            {repeat === option.value ? <Check className="h-4 w-4 text-primary" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                            if (option.value === "none") {
-                              onRepeatUntilChange("");
-                              return;
-                            }
+                    <div className="relative">
+                      <button
+                        ref={customButtonRef}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-[1rem] border px-3 py-2 text-left text-sm transition-colors",
+                          repeat === "custom"
+                            ? "border-primary/45 bg-primary/10 text-foreground"
+                            : "border-border/80 bg-card/70 text-muted-foreground hover:text-foreground",
+                          !value && "cursor-not-allowed opacity-45",
+                        )}
+                        disabled={!value}
+                        aria-expanded={customPanelOpen}
+                        aria-haspopup="dialog"
+                        onClick={handleCustomRepeatOpen}
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          <span>Custom</span>
+                          {repeat === "custom" ? (
+                            <span className="truncate text-xs text-muted-foreground">{repeatSummary}</span>
+                          ) : null}
+                        </span>
+                        {repeat === "custom" ? <Check className="h-4 w-4 text-primary" /> : null}
+                      </button>
 
-                            if (value && repeatUntil && repeatUntil < value) {
-                              onRepeatUntilChange("");
-                            }
-                          }}
+                      {customPanelOpen ? (
+                        <PopoverPanel
+                          anchorRef={customButtonRef}
+                          panelRef={customPanelRef}
+                          className="w-[min(26rem,calc(100vw-2rem))] space-y-4 p-4"
                         >
-                          <span>{option.label}</span>
-                          {repeat === option.value ? <Check className="h-4 w-4 text-primary" /> : null}
-                        </button>
-                      );
-                    })}
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3">
+                              <label className="flex items-center gap-3 text-sm font-medium text-foreground">
+                                <span>Every</span>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={normalizedCustomRepeat?.interval ?? 1}
+                                  className="h-10 rounded-xl px-3 py-2"
+                                  onChange={(event) => handleCustomIntervalChange(event.target.value)}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3">
+                              <label className="flex flex-col gap-2 text-sm font-medium text-foreground">
+                                <span>Unit</span>
+                                <Select
+                                  value={normalizedCustomRepeat?.unit ?? "day"}
+                                  onChange={(event) => handleCustomUnitChange(event.target.value as TaskCustomRepeatUnit)}
+                                >
+                                  <option value="day">day</option>
+                                  <option value="week">week</option>
+                                  <option value="month">month</option>
+                                  <option value="year">year</option>
+                                </Select>
+                              </label>
+                            </div>
+                          </div>
+
+                          {normalizedCustomRepeat?.unit === "day" ? (
+                            <label className="flex items-center gap-3 rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3 text-sm text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={normalizedCustomRepeat.skip_weekends}
+                                onChange={(event) => handleCustomSkipWeekendsChange(event.target.checked)}
+                              />
+                              <span>Skip weekends</span>
+                            </label>
+                          ) : null}
+
+                          {normalizedCustomRepeat?.unit === "week" ? (
+                            <div className="space-y-2 rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                Repeat on
+                              </p>
+                              <div className="grid grid-cols-7 gap-2">
+                                {ISO_WEEKDAYS.map((weekday) => {
+                                  const selected = normalizedCustomRepeat.weekdays.includes(weekday);
+                                  return (
+                                    <button
+                                      key={weekday}
+                                      type="button"
+                                      aria-label={WEEKDAY_NAMES[weekday - 1]}
+                                      aria-pressed={selected}
+                                      className={cn(
+                                        "flex h-10 items-center justify-center rounded-[0.95rem] border text-sm font-semibold transition-colors",
+                                        selected
+                                          ? "border-primary/45 bg-primary text-primary-foreground"
+                                          : "border-border/80 bg-card/70 text-muted-foreground hover:text-foreground",
+                                      )}
+                                      onClick={() => handleCustomWeekdayToggle(weekday)}
+                                    >
+                                      {WEEKDAY_LETTERS[weekday - 1]}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-muted-foreground">Choose one or more weekdays.</p>
+                            </div>
+                          ) : null}
+
+                          {normalizedCustomRepeat?.unit === "month" ? (
+                            <div className="space-y-3 rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                  Day of month
+                                </p>
+                                <div className="mt-2">
+                                  {renderMonthDaySelector(
+                                    normalizedCustomRepeat.month_day,
+                                    handleCustomMonthDaySelect,
+                                  )}
+                                </div>
+                              </div>
+                              <label className="flex items-center gap-3 text-sm text-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={normalizedCustomRepeat.skip_weekends}
+                                  onChange={(event) => handleCustomSkipWeekendsChange(event.target.checked)}
+                                />
+                                <span>Skip weekends</span>
+                              </label>
+                            </div>
+                          ) : null}
+
+                          {normalizedCustomRepeat?.unit === "year" ? (
+                            <div className="space-y-3 rounded-[1rem] border border-border/80 bg-muted/20 px-3 py-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {yearlyMonthFormatter.format(customYearlyVisibleMonth)}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                    aria-label="Previous custom repeat month"
+                                    onClick={() => setCustomYearlyVisibleMonth((current) => addCalendarMonths(current, -1))}
+                                  >
+                                    <ChevronLeft className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                                    aria-label="Next custom repeat month"
+                                    onClick={() => setCustomYearlyVisibleMonth((current) => addCalendarMonths(current, 1))}
+                                  >
+                                    <ChevronRight className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              {renderCalendarGrid({
+                                calendarDays: yearlyCalendarDays,
+                                selectedDateString: getSelectedYearlyDateString(normalizedCustomRepeat),
+                                todayString: "",
+                                previewDates: new Set<string>(),
+                                dayClassName: "h-9",
+                                onSelect: handleCustomYearlyDateSelect,
+                              })}
+                            </div>
+                          ) : null}
+                        </PopoverPanel>
+                      ) : null}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {!value ? "Pick a due date before enabling repeat." : "Custom repeat keeps the same series semantics across clients."}
+                    </p>
                   </div>
                 </div>
 

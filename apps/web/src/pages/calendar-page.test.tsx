@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
     description_blocks: [{ kind: "text", text: "" }],
     due_date: "2026-03-18",
     reminder_time: "09:30",
+    repeat_config: null,
     repeat_until: null,
     is_done: false,
     is_pinned: false,

@@ -3,12 +3,20 @@ package com.taskmanager.android.ui.screens
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.common.truth.Truth.assertThat
 import com.taskmanager.android.testTaskItem
 import com.taskmanager.android.testTaskSubtask
 import com.taskmanager.android.ui.theme.TaskManagerTheme
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
 import com.taskmanager.android.model.TaskEditorContext
+import com.taskmanager.android.model.TaskRepeat
 import com.taskmanager.android.model.TaskViewTarget
 import org.junit.Rule
 import org.junit.Test
@@ -51,5 +59,86 @@ class TaskEditorScreenTest {
 
         composeRule.onAllNodesWithText("Write notes").assertCountEquals(1)
         composeRule.onAllNodesWithText("Share plan").assertCountEquals(1)
+    }
+
+    @Test
+    fun `task editor can configure custom repeat and show restored summary`() {
+        composeRule.setContent {
+            TaskManagerTheme {
+                TaskEditorScreen(
+                    task = testTaskItem(
+                        id = 55,
+                        title = "Recurring task",
+                        dueDate = "2026-03-16",
+                        repeat = TaskRepeat.CUSTOM,
+                        repeatConfig = TaskCustomRepeatConfig(
+                            interval = 2,
+                            unit = TaskCustomRepeatUnit.WEEK,
+                            weekdays = listOf(1, 3, 5),
+                        ),
+                    ),
+                    lists = emptyList(),
+                    editorContext = TaskEditorContext(viewTarget = TaskViewTarget.All),
+                    onBack = {},
+                    onCreateTask = { Result.success(Unit) },
+                    onUpdateTask = { _, _ -> Result.success(Unit) },
+                    onDeleteTask = { _ -> Result.success(Unit) },
+                    onCreateSubtask = { _, _ -> Result.success(Unit) },
+                    onUpdateSubtask = { _, _ -> Result.success(Unit) },
+                    onToggleSubtask = { _ -> Result.success(Unit) },
+                    onDeleteSubtask = { _ -> Result.success(Unit) },
+                    onReorderSubtasks = { _, _ -> Result.success(Unit) },
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("Every 2 weeks on M, W, F").assertCountEquals(1)
+        composeRule.onNodeWithTag("custom-repeat-weekday-2", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onAllNodesWithText("Every 2 weeks on M, T, W, F").assertCountEquals(1)
+    }
+
+    @Test
+    fun `custom weekly repeat with no weekdays does not save`() {
+        var createCalls = 0
+
+        composeRule.setContent {
+            TaskManagerTheme {
+                TaskEditorScreen(
+                    task = null,
+                    lists = emptyList(),
+                    editorContext = TaskEditorContext(
+                        viewTarget = TaskViewTarget.All,
+                        prefilledDueDate = "2026-03-16",
+                    ),
+                    onBack = {},
+                    onCreateTask = {
+                        createCalls += 1
+                        Result.success(Unit)
+                    },
+                    onUpdateTask = { _, _ -> Result.success(Unit) },
+                    onDeleteTask = { _ -> Result.success(Unit) },
+                    onCreateSubtask = { _, _ -> Result.success(Unit) },
+                    onUpdateSubtask = { _, _ -> Result.success(Unit) },
+                    onToggleSubtask = { _ -> Result.success(Unit) },
+                    onDeleteSubtask = { _ -> Result.success(Unit) },
+                    onReorderSubtasks = { _, _ -> Result.success(Unit) },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Task title").performTextInput("Custom weekly")
+        composeRule.onNodeWithTag("task-repeat-custom", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("custom-repeat-unit-week", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("custom-repeat-weekday-1", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("task-editor-submit").performSemanticsAction(SemanticsActions.OnClick)
+
+        composeRule.onAllNodesWithText("Choose at least one weekday for a custom weekly repeat.").assertCountEquals(1)
+        composeRule.runOnIdle {
+            assertThat(createCalls).isEqualTo(0)
+        }
     }
 }

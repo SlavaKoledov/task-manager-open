@@ -3,12 +3,16 @@ package com.taskmanager.android.domain
 import com.google.common.truth.Truth.assertThat
 import com.taskmanager.android.model.AllTaskGroupId
 import com.taskmanager.android.model.EditableSubtaskDraft
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
 import com.taskmanager.android.model.TaskDraft
 import com.taskmanager.android.model.TaskEditorContext
 import com.taskmanager.android.model.TaskPriority
 import com.taskmanager.android.model.TaskRepeat
 import com.taskmanager.android.model.TaskSectionId
 import com.taskmanager.android.model.TaskViewTarget
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
@@ -151,5 +155,41 @@ class TaskDraftUtilsTest {
         )
 
         assertThat(error).contains("Choose a due date before setting a reminder")
+    }
+
+    @Test
+    fun `custom repeat validation and serialization work end to end`() {
+        val invalidWeeklyError = validateTaskDraft(
+            TaskDraft(
+                title = "Custom weekly",
+                dueDate = "2026-03-20",
+                repeat = TaskRepeat.CUSTOM,
+                repeatConfig = TaskCustomRepeatConfig(
+                    interval = 2,
+                    unit = TaskCustomRepeatUnit.WEEK,
+                    weekdays = emptyList(),
+                ),
+            ),
+        )
+
+        val payload = buildTaskUpdatePayloadJson(
+            TaskDraft(
+                title = "Custom monthly",
+                dueDate = "2026-03-20",
+                repeat = TaskRepeat.CUSTOM,
+                repeatConfig = TaskCustomRepeatConfig(
+                    interval = 3,
+                    unit = TaskCustomRepeatUnit.MONTH,
+                    skipWeekends = true,
+                    monthDay = 31,
+                ),
+            ),
+        )
+
+        assertThat(invalidWeeklyError).contains("Choose at least one weekday")
+        assertThat(payload["repeat"]?.jsonPrimitive?.content).isEqualTo("custom")
+        assertThat(payload["repeat_config"]?.jsonObject?.get("interval")?.jsonPrimitive?.int).isEqualTo(3)
+        assertThat(payload["repeat_config"]?.jsonObject?.get("unit")?.jsonPrimitive?.content).isEqualTo("month")
+        assertThat(payload["repeat_config"]?.jsonObject?.get("month_day")?.jsonPrimitive?.int).isEqualTo(31)
     }
 }

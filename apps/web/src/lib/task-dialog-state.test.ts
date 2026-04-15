@@ -14,6 +14,7 @@ function makeDraft(overrides: Partial<TaskDraft> = {}): TaskDraft {
     ],
     due_date: "2026-03-13",
     reminder_time: "08:30",
+    repeat_config: null,
     repeat_until: "",
     is_done: false,
     is_pinned: true,
@@ -44,6 +45,7 @@ describe("task dialog state helpers", () => {
         description_blocks: [{ kind: "text", text: "Summarize fixes" }],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: false,
         is_pinned: false,
@@ -66,6 +68,7 @@ describe("task dialog state helpers", () => {
       due_date: "2026-03-13",
       reminder_time: "08:30",
       repeat_until: "2026-04-10",
+      repeat_config: null,
       is_done: false,
       is_pinned: true,
       priority: "urgent_important",
@@ -107,6 +110,7 @@ describe("task dialog state helpers", () => {
         description_blocks: [],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: false,
         is_pinned: false,
@@ -125,6 +129,7 @@ describe("task dialog state helpers", () => {
         description_blocks: [],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: false,
         is_pinned: false,
@@ -176,6 +181,7 @@ describe("task dialog state helpers", () => {
       due_date: "2026-03-13",
       reminder_time: "08:30",
       repeat_until: "2026-04-10",
+      repeat_config: null,
       is_done: false,
       is_pinned: true,
       priority: "urgent_important",
@@ -195,5 +201,49 @@ describe("task dialog state helpers", () => {
     expect(validateTaskDraft(makeDraft({ due_date: "", repeat: "none", reminder_time: "09:00" }))).toBe(
       "Choose a due date before setting a reminder.",
     );
+  });
+
+  it("validates and serializes custom repeat configuration", () => {
+    expect(
+      validateTaskDraft(
+        makeDraft({
+          repeat: "custom",
+          repeat_config: {
+            interval: 2,
+            unit: "week",
+            skip_weekends: false,
+            weekdays: [],
+            month_day: null,
+            month: null,
+            day: null,
+          },
+        }),
+      ),
+    ).toBe("Choose at least one weekday for a custom weekly repeat.");
+
+    expect(
+      buildTaskUpdatePayloadFromDraft(
+        makeDraft({
+          repeat: "custom",
+          repeat_config: {
+            interval: 2,
+            unit: "week",
+            skip_weekends: false,
+            weekdays: [5, 1, 5, 3],
+            month_day: null,
+            month: null,
+            day: null,
+          },
+        }),
+      ),
+    ).toMatchObject({
+      repeat: "custom",
+      repeat_config: {
+        interval: 2,
+        unit: "week",
+        skip_weekends: false,
+        weekdays: [1, 3, 5],
+      },
+    });
   });
 });

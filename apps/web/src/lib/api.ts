@@ -73,6 +73,7 @@ function normalizeSubtask(task: ApiTask): TaskSubtask {
     description_blocks: ensureDescriptionBlocks(task.description_blocks, task.description),
     due_date: task.due_date,
     reminder_time: task.reminder_time ?? null,
+    repeat_config: task.repeat_config ?? null,
     repeat_until: task.repeat_until,
     is_done: task.is_done,
     is_pinned: task.is_pinned,
@@ -101,6 +102,7 @@ function prepareTaskPayload<T extends TaskCreatePayload | TaskUpdatePayload>(pay
   return {
     ...payload,
     description_blocks: payload.description_blocks,
+    repeat_config: "repeat_config" in payload ? payload.repeat_config ?? null : undefined,
   } as T;
 }
 

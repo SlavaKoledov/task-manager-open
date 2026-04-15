@@ -48,7 +48,7 @@ class SubtaskDraftListTest {
 
         composeRule.onNodeWithTag("subtask-drag-handle-1").performTouchInput {
             down(center)
-            moveBy(Offset(0f, 220f))
+            moveBy(Offset(0f, 420f))
             up()
         }
 

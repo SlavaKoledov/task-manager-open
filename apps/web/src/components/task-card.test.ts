@@ -12,6 +12,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
     description_blocks: [{ kind: "text", text: "" }],
     due_date: "2026-03-14",
     reminder_time: null,
+    repeat_config: null,
     repeat_until: null,
     is_done: false,
     is_pinned: false,
@@ -30,6 +31,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
         description_blocks: [{ kind: "text", text: "" }],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: true,
         is_pinned: false,
@@ -48,6 +50,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
         description_blocks: [{ kind: "text", text: "" }],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: false,
         is_pinned: false,
@@ -66,6 +69,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
         description_blocks: [{ kind: "text", text: "" }],
         due_date: null,
         reminder_time: null,
+        repeat_config: null,
         repeat_until: null,
         is_done: true,
         is_pinned: false,
@@ -133,5 +137,33 @@ describe("TaskCard", () => {
 
     expect(withDescription).toContain("Has description");
     expect(withoutDescription).not.toContain("Has description");
+  });
+
+  it("renders custom repeat summaries on the card badge", () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskCard, {
+        task: makeTask({
+          repeat: "custom",
+          repeat_config: {
+            interval: 2,
+            unit: "week",
+            skip_weekends: false,
+            weekdays: [1, 3, 5],
+            month_day: null,
+            month: null,
+            day: null,
+          },
+        }),
+        todayString: "2026-03-13",
+        tomorrowString: "2026-03-14",
+        subtasksCollapsed: false,
+        onToggle: async () => undefined,
+        onToggleSubtask: async () => undefined,
+        onEdit: () => undefined,
+        onToggleSubtasks: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Every 2 weeks on M, W, F");
   });
 });

@@ -91,12 +91,12 @@ class TaskSectionCardTest {
             }
         }
 
-        composeRule.onNodeWithTag("section-collapse-urgent_important").assertIsDisplayed()
+        composeRule.onNodeWithTag("section-tag-urgent_important").assertIsDisplayed()
         composeRule.onNodeWithTag("section-count-urgent_important").assertIsDisplayed()
         composeRule.onNodeWithTag("section-create-urgent_important").assertIsDisplayed()
 
         composeRule.runOnIdle {
-            val collapseLeft = composeRule.onNodeWithTag("section-collapse-urgent_important").fetchSemanticsNode().boundsInRoot.left
+            val collapseLeft = composeRule.onNodeWithTag("section-tag-urgent_important").fetchSemanticsNode().boundsInRoot.left
             val countLeft = composeRule.onNodeWithTag("section-count-urgent_important").fetchSemanticsNode().boundsInRoot.left
             val createLeft = composeRule.onNodeWithTag("section-create-urgent_important").fetchSemanticsNode().boundsInRoot.left
 

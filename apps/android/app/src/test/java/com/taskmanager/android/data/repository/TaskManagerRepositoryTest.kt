@@ -12,15 +12,19 @@ import com.taskmanager.android.data.api.ApiListItem
 import com.taskmanager.android.data.api.ApiServiceFactory
 import com.taskmanager.android.data.api.ApiSubtaskReorderPayload
 import com.taskmanager.android.data.api.ApiTask
+import com.taskmanager.android.data.api.ApiTaskCustomRepeatConfig
 import com.taskmanager.android.data.api.ApiTaskCreatePayload
+import com.taskmanager.android.data.api.toDomain
 import com.taskmanager.android.data.local.LocalCacheMapper
 import com.taskmanager.android.data.local.TaskManagerDao
 import com.taskmanager.android.data.local.TaskManagerDatabase
 import com.taskmanager.android.data.notifications.TaskNotificationManager
 import com.taskmanager.android.data.preferences.AppPreferencesStore
 import com.taskmanager.android.data.sync.TaskSyncScheduler
+import com.taskmanager.android.domain.resolveNextRecurringDate
 import com.taskmanager.android.model.NewTaskPlacement
 import com.taskmanager.android.model.TaskEditorContext
+import com.taskmanager.android.model.TaskRepeat
 import com.taskmanager.android.model.TaskViewTarget
 import java.io.File
 import java.time.Clock
@@ -527,6 +531,59 @@ class TaskManagerRepositoryTest {
     }
 
     @Test
+    fun `offline custom recurring update survives restart and syncs to server`() = runBlocking {
+        val baseUrl = preferencesStore.currentPreferences().baseUrl
+        seedCache(
+            baseUrl,
+            listOf(
+                serverTask(
+                    id = 7,
+                    title = "Standup",
+                    isDone = false,
+                    dueDate = "2026-03-20",
+                    repeat = "weekly",
+                    repeatUntil = "2026-05-01",
+                ),
+            ),
+        )
+
+        repository.updateTask(
+            7,
+            updatePayload(
+                "repeat" to JsonPrimitive("custom"),
+                "repeat_config" to buildJsonObject {
+                    put("interval", JsonPrimitive(2))
+                    put("unit", JsonPrimitive("week"))
+                    put("skip_weekends", JsonPrimitive(false))
+                    put("weekdays", json.parseToJsonElement("[1,3,5]"))
+                    put("month_day", kotlinx.serialization.json.JsonNull)
+                    put("month", kotlinx.serialization.json.JsonNull)
+                    put("day", kotlinx.serialization.json.JsonNull)
+                },
+                "repeat_until" to JsonPrimitive("2026-06-15"),
+            ),
+        )
+
+        database.close()
+        database = buildDatabase(databaseName)
+        dao = database.taskManagerDao()
+        repository = createRepository(database, dao, RecordingTaskSyncScheduler())
+
+        val result = repository.syncCurrentBaseUrl(forceRefresh = true)
+        val syncedTask = repository.observeTasks().first().single()
+
+        assertThat(result.success).isTrue()
+        assertThat(dispatcher.tasks.single().repeat).isEqualTo("custom")
+        assertThat(dispatcher.tasks.single().repeatConfig?.unit).isEqualTo("week")
+        assertThat(dispatcher.tasks.single().repeatConfig?.interval).isEqualTo(2)
+        assertThat(dispatcher.tasks.single().repeatConfig?.weekdays).containsExactly(1, 3, 5).inOrder()
+        assertThat(syncedTask.repeat.wire).isEqualTo("custom")
+        assertThat(syncedTask.repeatConfig?.unit).isEqualTo(com.taskmanager.android.model.TaskCustomRepeatUnit.WEEK)
+        assertThat(syncedTask.repeatConfig?.interval).isEqualTo(2)
+        assertThat(syncedTask.repeatUntil).isEqualTo("2026-06-15")
+    }
+
+    @Test
     fun `offline reorder subtasks with local ids survives sync`() = runBlocking {
         val baseUrl = preferencesStore.currentPreferences().baseUrl
         seedCache(
@@ -575,7 +632,7 @@ class TaskManagerRepositoryTest {
     }
 
     @Test
-    fun `calendar checkbox completion works for recurring and non recurring tasks`() {
+    fun `calendar checkbox completion works for recurring, custom recurring and non recurring tasks`() {
         runBlocking {
             val baseUrl = preferencesStore.currentPreferences().baseUrl
             seedCache(
@@ -591,28 +648,48 @@ class TaskManagerRepositoryTest {
                         repeatUntil = "2026-03-19",
                         subtasks = listOf(serverSubtask(id = 81, parentId = 8, title = "Prep notes", position = 0)),
                     ),
+                    serverTask(
+                        id = 9,
+                        title = "Custom daily review",
+                        isDone = false,
+                        dueDate = "2026-03-13",
+                        repeat = "custom",
+                        repeatConfig = ApiTaskCustomRepeatConfig(
+                            interval = 1,
+                            unit = "day",
+                            skipWeekends = true,
+                        ),
+                        repeatUntil = "2026-03-20",
+                    ),
                 ),
             )
 
             repository.toggleTask(7)
             repository.toggleTask(8)
+            repository.toggleTask(9)
 
             val localTasks = repository.observeTasks().first()
             assertThat(localTasks.first { it.id == 7 }.isDone).isTrue()
             assertThat(localTasks.first { it.id == 8 }.isDone).isTrue()
+            assertThat(localTasks.first { it.id == 9 }.isDone).isTrue()
 
             val result = repository.syncCurrentBaseUrl(forceRefresh = true)
             val syncedTasks = repository.observeTasks().first()
             val historicalRecurring = syncedTasks.first { it.id == 8 }
             val nextRecurring = syncedTasks.first { it.id != 8 && it.title == "Daily review" }
+            val historicalCustomRecurring = syncedTasks.first { it.id == 9 }
+            val nextCustomRecurring = syncedTasks.first { it.id != 9 && it.title == "Custom daily review" }
 
             assertThat(result.success).isTrue()
-            assertThat(dispatcher.toggleCalls).isEqualTo(2)
+            assertThat(dispatcher.toggleCalls).isEqualTo(3)
             assertThat(syncedTasks.first { it.id == 7 }.isDone).isTrue()
             assertThat(historicalRecurring.isDone).isTrue()
             assertThat(nextRecurring.isDone).isFalse()
             assertThat(nextRecurring.dueDate).isEqualTo("2026-03-18")
             assertThat(nextRecurring.subtasks.map { it.title }).containsExactly("Prep notes").inOrder()
+            assertThat(historicalCustomRecurring.isDone).isTrue()
+            assertThat(nextCustomRecurring.isDone).isFalse()
+            assertThat(nextCustomRecurring.dueDate).isEqualTo("2026-03-16")
         }
     }
 
@@ -796,6 +873,7 @@ class TaskManagerRepositoryTest {
         dueDate: String? = null,
         reminderTime: String? = null,
         repeat: String = "none",
+        repeatConfig: ApiTaskCustomRepeatConfig? = null,
         repeatUntil: String? = null,
         listId: Int? = null,
         subtasks: List<ApiTask> = emptyList(),
@@ -806,6 +884,7 @@ class TaskManagerRepositoryTest {
         descriptionBlocks = emptyList(),
         dueDate = dueDate,
         reminderTime = reminderTime,
+        repeatConfig = repeatConfig,
         repeatUntil = repeatUntil,
         isDone = isDone,
         isPinned = false,
@@ -832,6 +911,7 @@ class TaskManagerRepositoryTest {
         descriptionBlocks = emptyList(),
         dueDate = null,
         reminderTime = null,
+        repeatConfig = null,
         repeatUntil = null,
         isDone = isDone,
         isPinned = false,
@@ -926,6 +1006,7 @@ class TaskManagerRepositoryTest {
                     descriptionBlocks = payload.descriptionBlocks,
                     dueDate = payload.dueDate,
                     reminderTime = payload.reminderTime,
+                    repeatConfig = payload.repeatConfig,
                     repeatUntil = payload.repeatUntil,
                     isDone = payload.isDone,
                     isPinned = payload.isPinned,
@@ -944,6 +1025,7 @@ class TaskManagerRepositoryTest {
                             descriptionBlocks = subtask.descriptionBlocks,
                             dueDate = subtask.dueDate,
                             reminderTime = subtask.reminderTime,
+                            repeatConfig = null,
                             repeatUntil = null,
                             isDone = subtask.isDone,
                             isPinned = false,
@@ -1028,16 +1110,22 @@ class TaskManagerRepositoryTest {
             }
 
             val payload = json.decodeFromString(com.taskmanager.android.data.api.ApiTaskUpdatePayload.serializer(), request.body.readUtf8())
+            val nextRepeat = payload.repeat ?: current.repeat
             val updated = current.copy(
                 title = payload.title ?: current.title,
                 description = payload.description,
                 descriptionBlocks = payload.descriptionBlocks ?: current.descriptionBlocks,
                 dueDate = payload.dueDate,
                 reminderTime = payload.reminderTime,
+                repeatConfig = when {
+                    nextRepeat != "custom" -> null
+                    payload.repeatConfig != null -> payload.repeatConfig
+                    else -> current.repeatConfig
+                },
                 repeatUntil = payload.repeatUntil,
                 isPinned = payload.isPinned ?: current.isPinned,
                 priority = payload.priority ?: current.priority,
-                repeat = payload.repeat ?: current.repeat,
+                repeat = nextRepeat,
                 listId = payload.listId,
                 updatedAt = "2026-03-17T12:06:00Z",
                 subtasks = if (current.parentId == null) {
@@ -1139,13 +1227,11 @@ class TaskManagerRepositoryTest {
 
         private fun spawnNextRecurringTask(task: ApiTask): ApiTask? {
             val dueDate = task.dueDate?.let(LocalDate::parse) ?: return null
-            val nextDueDate = when (task.repeat) {
-                "daily" -> dueDate.plusDays(1)
-                "weekly" -> dueDate.plusWeeks(1)
-                "monthly" -> dueDate.plusMonths(1)
-                "yearly" -> dueDate.plusYears(1)
-                else -> dueDate
-            }
+            val nextDueDate = resolveNextRecurringDate(
+                repeat = TaskRepeat.fromWire(task.repeat),
+                currentDate = dueDate,
+                repeatConfig = task.repeatConfig?.toDomain(),
+            )
             val repeatUntil = task.repeatUntil?.let(LocalDate::parse)
             if (repeatUntil != null && nextDueDate.isAfter(repeatUntil)) {
                 return null

@@ -42,6 +42,7 @@ import com.taskmanager.android.domain.buildCalendarMonthDays
 import com.taskmanager.android.domain.buildTaskOccurrencesInRange
 import com.taskmanager.android.domain.compareCalendarOccurrences
 import com.taskmanager.android.domain.getCalendarMonthRange
+import com.taskmanager.android.domain.getTaskRepeatSummary
 import com.taskmanager.android.domain.groupTaskOccurrencesByDate
 import com.taskmanager.android.model.ListItem
 import com.taskmanager.android.model.TaskItem
@@ -380,7 +381,7 @@ private fun CalendarTaskRow(
                         }
                         if (task.repeat != com.taskmanager.android.model.TaskRepeat.NONE) {
                             if (isNotEmpty()) append(" • ")
-                            append(task.repeat.title)
+                            append(getTaskRepeatSummary(task.repeat, task.repeatConfig))
                         }
                     },
                     style = MaterialTheme.typography.bodySmall,

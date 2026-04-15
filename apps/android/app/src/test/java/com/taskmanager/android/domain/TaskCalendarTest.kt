@@ -2,6 +2,9 @@ package com.taskmanager.android.domain
 
 import com.google.common.truth.Truth.assertThat
 import com.taskmanager.android.testTaskItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
+import com.taskmanager.android.model.TaskRepeat
 import java.time.LocalDate
 import java.time.YearMonth
 import org.junit.Test
@@ -121,5 +124,79 @@ class TaskCalendarTest {
         assertThat(occurrences.map { Triple(it.task.id, it.date.toString(), it.isRecurring) }).containsExactly(
             Triple(9, "2026-03-17", false),
         )
+    }
+
+    @Test
+    fun `custom repeat logic handles skip weekends weekly intervals and safe month dates`() {
+        assertThat(
+            resolveNextRecurringDate(
+                repeat = TaskRepeat.CUSTOM,
+                currentDate = LocalDate.parse("2026-03-13"),
+                repeatConfig = TaskCustomRepeatConfig(
+                    interval = 1,
+                    unit = TaskCustomRepeatUnit.DAY,
+                    skipWeekends = true,
+                ),
+            ),
+        ).isEqualTo(LocalDate.parse("2026-03-16"))
+
+        assertThat(
+            resolveNextRecurringDate(
+                repeat = TaskRepeat.CUSTOM,
+                currentDate = LocalDate.parse("2026-03-16"),
+                repeatConfig = TaskCustomRepeatConfig(
+                    interval = 2,
+                    unit = TaskCustomRepeatUnit.WEEK,
+                    weekdays = listOf(1, 3, 5),
+                ),
+            ),
+        ).isEqualTo(LocalDate.parse("2026-03-18"))
+
+        assertThat(
+            resolveNextRecurringDate(
+                repeat = TaskRepeat.CUSTOM,
+                currentDate = LocalDate.parse("2026-01-31"),
+                repeatConfig = TaskCustomRepeatConfig(
+                    interval = 1,
+                    unit = TaskCustomRepeatUnit.MONTH,
+                    monthDay = 31,
+                ),
+            ),
+        ).isEqualTo(LocalDate.parse("2026-02-28"))
+    }
+
+    @Test
+    fun `calendar occurrences include custom recurring tasks`() {
+        val occurrences = buildTaskOccurrencesInRange(
+            tasks = listOf(
+                testTaskItem(
+                    id = 11,
+                    title = "Custom weekly",
+                    dueDate = "2026-03-16",
+                    repeat = TaskRepeat.CUSTOM,
+                    repeatConfig = TaskCustomRepeatConfig(
+                        interval = 2,
+                        unit = TaskCustomRepeatUnit.WEEK,
+                        weekdays = listOf(1, 3, 5),
+                    ),
+                    repeatUntil = "2026-04-03",
+                ),
+            ),
+            range = CalendarDateRange(
+                start = LocalDate.parse("2026-03-16"),
+                endInclusive = LocalDate.parse("2026-04-05"),
+            ),
+        )
+
+        assertThat(occurrences.map { it.date.toString() }).containsExactly(
+            "2026-03-16",
+            "2026-03-18",
+            "2026-03-20",
+            "2026-03-30",
+            "2026-04-01",
+            "2026-04-03",
+        ).inOrder()
+        assertThat(getTaskRepeatSummary(TaskRepeat.CUSTOM, occurrences.first().task.repeatConfig))
+            .isEqualTo("Every 2 weeks on M, W, F")
     }
 }

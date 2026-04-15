@@ -5,6 +5,7 @@ import com.taskmanager.android.data.api.ApiListItem
 import com.taskmanager.android.data.api.ApiTask
 import com.taskmanager.android.data.api.toDomain
 import com.taskmanager.android.model.ListItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
 import com.taskmanager.android.model.TaskItem
 import com.taskmanager.android.model.TaskPriority
 import com.taskmanager.android.model.TaskRepeat
@@ -18,6 +19,7 @@ class LocalCacheMapper @Inject constructor(
     private val json: Json,
 ) {
     private val descriptionBlockListSerializer = ListSerializer(ApiDescriptionBlock.serializer())
+    private val customRepeatSerializer = TaskCustomRepeatConfig.serializer()
 
     fun toListEntities(baseUrl: String, items: List<ApiListItem>): List<CachedListEntity> =
         items.map { item ->
@@ -63,6 +65,7 @@ class LocalCacheMapper @Inject constructor(
                 descriptionBlocksJson = encodeDescriptionBlocks(payload.descriptionBlocks),
                 dueDate = payload.dueDate,
                 reminderTime = payload.reminderTime,
+                repeatConfigJson = encodeRepeatConfig(payload.repeatConfig),
                 repeatUntil = payload.repeatUntil,
                 isDone = payload.isDone,
                 isPinned = payload.isPinned,
@@ -86,6 +89,7 @@ class LocalCacheMapper @Inject constructor(
                     descriptionBlocksJson = encodeDescriptionBlocks(subtask.descriptionBlocks),
                     dueDate = subtask.dueDate,
                     reminderTime = subtask.reminderTime,
+                    repeatConfigJson = null,
                     repeatUntil = null,
                     isDone = subtask.isDone,
                     isPinned = false,
@@ -117,6 +121,7 @@ class LocalCacheMapper @Inject constructor(
                     descriptionBlocks = decodeDescriptionBlocks(entity.descriptionBlocksJson).map(ApiDescriptionBlock::toDomain),
                     dueDate = entity.dueDate,
                     reminderTime = entity.reminderTime,
+                    repeatConfig = decodeRepeatConfig(entity.repeatConfigJson),
                     repeatUntil = entity.repeatUntil,
                     isDone = entity.isDone,
                     isPinned = entity.isPinned,
@@ -138,6 +143,7 @@ class LocalCacheMapper @Inject constructor(
                                 descriptionBlocks = decodeDescriptionBlocks(subtask.descriptionBlocksJson).map(ApiDescriptionBlock::toDomain),
                                 dueDate = subtask.dueDate,
                                 reminderTime = subtask.reminderTime,
+                                repeatConfig = decodeRepeatConfig(subtask.repeatConfigJson),
                                 repeatUntil = subtask.repeatUntil,
                                 isDone = subtask.isDone,
                                 isPinned = subtask.isPinned,
@@ -160,6 +166,12 @@ class LocalCacheMapper @Inject constructor(
     fun decodeDescriptionBlocks(rawJson: String): List<ApiDescriptionBlock> =
         json.decodeFromString(descriptionBlockListSerializer, rawJson)
 
+    fun encodeRepeatConfig(config: TaskCustomRepeatConfig?): String? =
+        config?.let { json.encodeToString(customRepeatSerializer, it) }
+
+    fun decodeRepeatConfig(rawJson: String?): TaskCustomRepeatConfig? =
+        rawJson?.let { json.decodeFromString(customRepeatSerializer, it) }
+
     private fun flattenTask(baseUrl: String, task: ApiTask): List<CachedTaskEntity> = buildList {
         add(
             CachedTaskEntity(
@@ -171,6 +183,7 @@ class LocalCacheMapper @Inject constructor(
                 descriptionBlocksJson = encodeDescriptionBlocks(task.descriptionBlocks),
                 dueDate = task.dueDate,
                 reminderTime = task.reminderTime,
+                repeatConfigJson = encodeRepeatConfig(task.repeatConfig?.toDomain()),
                 repeatUntil = task.repeatUntil,
                 isDone = task.isDone,
                 isPinned = task.isPinned,

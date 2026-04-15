@@ -1,9 +1,10 @@
 import { parseLocalDateString } from "@/lib/date";
 import { descriptionBlocksToText, stripDescriptionBlocks } from "@/lib/task-description";
+import { normalizeCustomRepeatConfig, validateCustomRepeatConfig } from "@/lib/task-repeat";
 import type { TaskCreatePayload, TaskDraft, TaskSubtask, TaskUpdatePayload } from "@/lib/types";
 
 export function validateTaskDraft(
-  draft: Pick<TaskDraft, "title" | "due_date" | "reminder_time" | "repeat" | "repeat_until">,
+  draft: Pick<TaskDraft, "title" | "due_date" | "reminder_time" | "repeat" | "repeat_config" | "repeat_until">,
 ): string | null {
   if (!draft.title.trim()) {
     return "Task title is required.";
@@ -30,6 +31,13 @@ export function validateTaskDraft(
     return "Choose a due date before setting a repeat schedule.";
   }
 
+  if (draft.repeat === "custom") {
+    const customRepeatError = validateCustomRepeatConfig(draft.repeat_config);
+    if (customRepeatError) {
+      return customRepeatError;
+    }
+  }
+
   if (!draft.due_date && draft.reminder_time) {
     return "Choose a due date before setting a reminder.";
   }
@@ -49,6 +57,7 @@ function buildNormalizedTaskFields(
     description_blocks: normalizedBlocks,
     due_date: draft.due_date || null,
     reminder_time: draft.due_date ? draft.reminder_time || null : null,
+    repeat_config: draft.repeat === "custom" ? normalizeCustomRepeatConfig(draft.repeat_config) : null,
     repeat_until: draft.repeat === "none" ? null : draft.repeat_until || null,
     is_done: draft.is_done,
     is_pinned: draft.is_pinned,

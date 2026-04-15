@@ -57,7 +57,11 @@ object AppModule {
             context,
             TaskManagerDatabase::class.java,
             "task_manager_cache.db",
-        ).addMigrations(TaskManagerDatabase.MIGRATION_1_2, TaskManagerDatabase.MIGRATION_2_3)
+        ).addMigrations(
+            TaskManagerDatabase.MIGRATION_1_2,
+            TaskManagerDatabase.MIGRATION_2_3,
+            TaskManagerDatabase.MIGRATION_3_4,
+        )
             .build()
 
     @Provides

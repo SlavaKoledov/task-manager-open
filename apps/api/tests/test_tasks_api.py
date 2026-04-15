@@ -53,6 +53,35 @@ def test_legacy_task_endpoints_remain_backwards_compatible(session) -> None:
     assert payload["parent_id"] is None
 
 
+def test_task_endpoints_round_trip_custom_repeat_configuration(session) -> None:
+    payload = serialize_task(
+        task_routes.create_task(
+            TaskCreate(
+                title="Custom cadence",
+                due_date="2026-03-18",
+                repeat="custom",
+                repeat_config={
+                    "interval": 2,
+                    "unit": "week",
+                    "weekdays": [1, 3, 5],
+                },
+            ),
+            session,
+        )
+    )
+
+    assert payload["repeat"] == "custom"
+    assert payload["repeat_config"] == {
+        "interval": 2,
+        "unit": "week",
+        "skip_weekends": False,
+        "weekdays": [1, 3, 5],
+        "month_day": None,
+        "month": None,
+        "day": None,
+    }
+
+
 def test_task_update_schema_rejects_create_only_fields() -> None:
     with pytest.raises(ValidationError) as error:
         TaskUpdate.model_validate(

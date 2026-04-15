@@ -1,6 +1,8 @@
 package com.taskmanager.android.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 enum class TaskPriority(val wire: String, val title: String) {
     URGENT_IMPORTANT("urgent_important", "High"),
@@ -21,6 +23,7 @@ enum class TaskRepeat(val wire: String, val title: String) {
     WEEKLY("weekly", "Weekly"),
     MONTHLY("monthly", "Monthly"),
     YEARLY("yearly", "Yearly"),
+    CUSTOM("custom", "Custom"),
     ;
 
     companion object {
@@ -28,6 +31,39 @@ enum class TaskRepeat(val wire: String, val title: String) {
             entries.firstOrNull { it.wire == value } ?: NONE
     }
 }
+
+@Serializable
+enum class TaskCustomRepeatUnit(val wire: String, val title: String) {
+    @SerialName("day")
+    DAY("day", "Day"),
+
+    @SerialName("week")
+    WEEK("week", "Week"),
+
+    @SerialName("month")
+    MONTH("month", "Month"),
+
+    @SerialName("year")
+    YEAR("year", "Year"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): TaskCustomRepeatUnit =
+            entries.firstOrNull { it.wire == value } ?: DAY
+    }
+}
+
+@Immutable
+@Serializable
+data class TaskCustomRepeatConfig(
+    val interval: Int = 1,
+    val unit: TaskCustomRepeatUnit = TaskCustomRepeatUnit.DAY,
+    @SerialName("skip_weekends") val skipWeekends: Boolean = false,
+    val weekdays: List<Int> = emptyList(),
+    @SerialName("month_day") val monthDay: Int? = null,
+    val month: Int? = null,
+    val day: Int? = null,
+)
 
 enum class TaskSectionId(val wire: String, val title: String) {
     PINNED("pinned", "Pinned"),
@@ -163,6 +199,7 @@ open class BaseTask(
     open val descriptionBlocks: List<DescriptionBlock>,
     open val dueDate: String?,
     open val reminderTime: String?,
+    open val repeatConfig: TaskCustomRepeatConfig?,
     open val repeatUntil: String?,
     open val isDone: Boolean,
     open val isPinned: Boolean,
@@ -183,6 +220,7 @@ data class TaskSubtask(
     override val descriptionBlocks: List<DescriptionBlock>,
     override val dueDate: String?,
     override val reminderTime: String?,
+    override val repeatConfig: TaskCustomRepeatConfig?,
     override val repeatUntil: String?,
     override val isDone: Boolean,
     override val isPinned: Boolean,
@@ -200,6 +238,7 @@ data class TaskSubtask(
     descriptionBlocks = descriptionBlocks,
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig,
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = isPinned,
@@ -220,6 +259,7 @@ data class TaskItem(
     override val descriptionBlocks: List<DescriptionBlock>,
     override val dueDate: String?,
     override val reminderTime: String?,
+    override val repeatConfig: TaskCustomRepeatConfig?,
     override val repeatUntil: String?,
     override val isDone: Boolean,
     override val isPinned: Boolean,
@@ -238,6 +278,7 @@ data class TaskItem(
     descriptionBlocks = descriptionBlocks,
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig,
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = isPinned,
@@ -311,6 +352,7 @@ data class TaskDraft(
     val description: String = "",
     val dueDate: String = "",
     val reminderTime: String = "",
+    val repeatConfig: TaskCustomRepeatConfig? = null,
     val repeatUntil: String = "",
     val isDone: Boolean = false,
     val isPinned: Boolean = false,

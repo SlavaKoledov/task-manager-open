@@ -9,6 +9,8 @@ import com.taskmanager.android.model.EditableSubtaskDraft
 import com.taskmanager.android.model.TaskDraft
 import com.taskmanager.android.model.TaskEditorContext
 import com.taskmanager.android.model.TaskItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
 import com.taskmanager.android.model.TaskRepeat
 import com.taskmanager.android.model.TaskSectionId
 import com.taskmanager.android.model.TaskViewTarget
@@ -65,6 +67,7 @@ fun buildTaskDraft(task: TaskItem): TaskDraft = TaskDraft(
     description = descriptionBlocksToText(ensureDescriptionBlocks(task.descriptionBlocks, task.description)).orEmpty(),
     dueDate = task.dueDate.orEmpty(),
     reminderTime = task.reminderTime.orEmpty(),
+    repeatConfig = task.repeatConfig,
     repeatUntil = task.repeatUntil.orEmpty(),
     isDone = task.isDone,
     isPinned = task.isPinned,
@@ -109,6 +112,10 @@ fun validateTaskDraft(draft: TaskDraft): String? {
         return "Choose a due date before setting a repeat schedule."
     }
 
+    if (draft.repeat == TaskRepeat.CUSTOM) {
+        validateCustomRepeatConfig(draft.repeatConfig)?.let { return it }
+    }
+
     if (draft.reminderTime.isNotBlank() && draft.dueDate.isBlank()) {
         return "Choose a due date before setting a reminder."
     }
@@ -127,6 +134,7 @@ fun buildTaskCreatePayloadFromDraft(
         descriptionBlocks = normalizedBlocks.map(DescriptionBlock::toApi),
         dueDate = draft.dueDate.takeIf { it.isNotBlank() },
         reminderTime = draft.reminderTime.takeIf { draft.dueDate.isNotBlank() && it.isNotBlank() },
+        repeatConfig = if (draft.repeat == TaskRepeat.CUSTOM) normalizeCustomRepeatConfig(draft.repeatConfig)?.toApi() else null,
         repeatUntil = draft.repeatUntil.takeIf { draft.repeat != TaskRepeat.NONE && it.isNotBlank() },
         isDone = draft.isDone,
         isPinned = draft.isPinned,
@@ -179,6 +187,14 @@ fun buildTaskUpdatePayloadJson(
             draft.reminderTime.takeIf { draft.dueDate.isNotBlank() && it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull,
         )
         put(
+            "repeat_config",
+            if (draft.repeat == TaskRepeat.CUSTOM) {
+                normalizeCustomRepeatConfig(draft.repeatConfig)?.let(::buildCustomRepeatConfigJson) ?: JsonNull
+            } else {
+                JsonNull
+            },
+        )
+        put(
             "repeat_until",
             draft.repeatUntil.takeIf { draft.repeat != TaskRepeat.NONE && it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull,
         )
@@ -197,7 +213,25 @@ fun updateDraftDate(draft: TaskDraft, nextDate: String): TaskDraft = draft.copy(
     repeat = if (nextDate.isNotBlank()) draft.repeat else TaskRepeat.NONE,
 )
 
-fun updateDraftRepeat(draft: TaskDraft, repeat: TaskRepeat): TaskDraft = draft.copy(
-    repeat = repeat,
-    repeatUntil = if (repeat == TaskRepeat.NONE) "" else draft.repeatUntil,
-)
+fun updateDraftRepeat(draft: TaskDraft, repeat: TaskRepeat): TaskDraft {
+    val anchorDate = draft.dueDate.takeIf(String::isNotBlank)?.let(::parseLocalDateString) ?: java.time.LocalDate.now()
+    return draft.copy(
+        repeat = repeat,
+        repeatConfig = if (repeat == TaskRepeat.CUSTOM) {
+            draft.repeatConfig ?: buildDefaultCustomRepeatConfig(TaskCustomRepeatUnit.DAY, anchorDate)
+        } else {
+            draft.repeatConfig
+        },
+        repeatUntil = if (repeat == TaskRepeat.NONE) "" else draft.repeatUntil,
+    )
+}
+
+private fun buildCustomRepeatConfigJson(config: TaskCustomRepeatConfig): JsonObject = buildJsonObject {
+    put("interval", JsonPrimitive(config.interval))
+    put("unit", JsonPrimitive(config.unit.wire))
+    put("skip_weekends", JsonPrimitive(config.skipWeekends))
+    put("weekdays", JsonArray(config.weekdays.map(::JsonPrimitive)))
+    put("month_day", config.monthDay?.let(::JsonPrimitive) ?: JsonNull)
+    put("month", config.month?.let(::JsonPrimitive) ?: JsonNull)
+    put("day", config.day?.let(::JsonPrimitive) ?: JsonNull)
+}

@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.domain.formatDueDateLabel
 import com.taskmanager.android.domain.getSubtaskProgressSummary
+import com.taskmanager.android.domain.getTaskRepeatSummary
 import com.taskmanager.android.domain.hasMeaningfulDescription
 import com.taskmanager.android.domain.isTaskOverdue
 import com.taskmanager.android.model.ListItem
@@ -177,7 +178,7 @@ fun TaskCard(
                         TaskBadge(label = task.priority.title, colors = priorityBadgeColors)
                         if (task.repeat != com.taskmanager.android.model.TaskRepeat.NONE) {
                             TaskBadge(
-                                label = task.repeat.title,
+                                label = getTaskRepeatSummary(task.repeat, task.repeatConfig),
                                 colors = neutralBadgeColors(),
                                 icon = { Icon(Icons.Outlined.Repeat, contentDescription = null, modifier = Modifier.size(12.dp)) },
                             )

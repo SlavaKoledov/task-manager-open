@@ -26,6 +26,7 @@ function makeTask(id: number, dueDate: string | null, overrides: Partial<TaskIte
     description_blocks: [{ kind: "text", text: "" }],
     due_date: dueDate,
     reminder_time: null,
+    repeat_config: null,
     repeat_until: null,
     is_done: false,
     is_pinned: false,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from calendar import monthrange
 from copy import deepcopy
 from datetime import date, timedelta
 
@@ -12,6 +11,7 @@ from app.models.list import TaskList
 from app.models.task import Task, TaskPriority, TaskRepeat, utcnow
 from app.schemas.task_description import normalize_description_blocks, parse_legacy_description, serialize_description_blocks
 from app.schemas.tasks import (
+    TaskCustomRepeatConfig,
     TaskMovePayload,
     TaskMoveResult,
     TaskSubtaskCreate,
@@ -22,6 +22,7 @@ from app.schemas.tasks import (
     TaskUpdate,
 )
 from app.services.live_events import publish_task_event
+from app.services.task_repeat import parse_repeat_config, resolve_next_due_date
 
 
 def _priority_ordering():
@@ -119,11 +120,20 @@ def _ensure_repeat_configuration(
     repeat: TaskRepeat,
     due_date: date | None,
     repeat_until: date | None,
-) -> None:
+    repeat_config: TaskCustomRepeatConfig | dict[str, object] | None,
+) -> TaskCustomRepeatConfig | None:
     _ensure_repeat_has_due_date(repeat, due_date)
 
+    normalized_repeat_config = parse_repeat_config(repeat_config) if repeat == TaskRepeat.CUSTOM else None
+
+    if repeat == TaskRepeat.CUSTOM and normalized_repeat_config is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Custom repeat requires a repeat configuration.",
+        )
+
     if repeat_until is None:
-        return
+        return normalized_repeat_config
 
     if repeat == TaskRepeat.NONE:
         raise HTTPException(
@@ -143,6 +153,8 @@ def _ensure_repeat_configuration(
             detail="Repeat end date cannot be earlier than the due date.",
         )
 
+    return normalized_repeat_config
+
 
 def _ensure_reminder_configuration(
     due_date: date | None,
@@ -158,26 +170,12 @@ def _ensure_reminder_configuration(
         )
 
 
-def _resolve_next_due_date(repeat: TaskRepeat, due_date: date) -> date:
-    if repeat == TaskRepeat.DAILY:
-        return due_date + timedelta(days=1)
-
-    if repeat == TaskRepeat.WEEKLY:
-        return due_date + timedelta(days=7)
-
-    if repeat == TaskRepeat.MONTHLY:
-        next_month_index = due_date.month
-        next_month_year = due_date.year + (next_month_index // 12)
-        next_month = (next_month_index % 12) + 1
-        last_day_of_month = monthrange(next_month_year, next_month)[1]
-        return date(next_month_year, next_month, min(due_date.day, last_day_of_month))
-
-    if repeat == TaskRepeat.YEARLY:
-        next_year = due_date.year + 1
-        last_day_of_month = monthrange(next_year, due_date.month)[1]
-        return date(next_year, due_date.month, min(due_date.day, last_day_of_month))
-
-    return due_date
+def _resolve_next_due_date(
+    repeat: TaskRepeat,
+    due_date: date,
+    repeat_config: TaskCustomRepeatConfig | None = None,
+) -> date:
+    return resolve_next_due_date(repeat, due_date, repeat_config)
 
 
 def _classify_due_date_group(due_date: date | None, reference_date: date) -> str:
@@ -360,7 +358,13 @@ def _prepare_create_values(session: Session, payload: TaskCreate, parent_task: T
     values["description_blocks"] = description_blocks
     values["parent_id"] = parent_id
     values["position"] = _resolve_next_position(session, parent_id)
-    _ensure_repeat_configuration(values["repeat"], values.get("due_date"), values.get("repeat_until"))
+    repeat_config = _ensure_repeat_configuration(
+        values["repeat"],
+        values.get("due_date"),
+        values.get("repeat_until"),
+        values.get("repeat_config"),
+    )
+    values["repeat_config"] = repeat_config.model_dump(mode="python") if repeat_config is not None else None
     _ensure_reminder_configuration(values.get("due_date"), values.get("reminder_time"))
 
     return values
@@ -386,6 +390,7 @@ def _build_nested_subtask_values(parent_task: Task, payload: TaskSubtaskCreate, 
         "is_pinned": False,
         "priority": parent_task.priority,
         "repeat": TaskRepeat.NONE,
+        "repeat_config": None,
         "repeat_until": None,
         "parent_id": parent_task.id,
         "position": position,
@@ -426,6 +431,11 @@ def _prepare_update_values(task: Task, payload: TaskUpdate, session: Session) ->
     next_due_date = updates["due_date"] if "due_date" in updates else task.due_date
     next_reminder_time = updates["reminder_time"] if "reminder_time" in updates else task.reminder_time
     next_repeat_until = updates["repeat_until"] if "repeat_until" in updates else task.repeat_until
+    next_repeat_config = (
+        updates.get("repeat_config", task.repeat_config)
+        if next_repeat == TaskRepeat.CUSTOM
+        else None
+    )
 
     if next_due_date is None:
         updates["reminder_time"] = None
@@ -435,7 +445,8 @@ def _prepare_update_values(task: Task, payload: TaskUpdate, session: Session) ->
         updates["repeat_until"] = None
         next_repeat_until = None
 
-    _ensure_repeat_configuration(next_repeat, next_due_date, next_repeat_until)
+    normalized_repeat_config = _ensure_repeat_configuration(next_repeat, next_due_date, next_repeat_until, next_repeat_config)
+    updates["repeat_config"] = normalized_repeat_config.model_dump(mode="python") if normalized_repeat_config is not None else None
     _ensure_reminder_configuration(next_due_date, next_reminder_time)
 
     return updates
@@ -471,6 +482,7 @@ def _clone_subtasks_for_spawned_task(source_task: Task, spawned_task: Task, sess
             is_pinned=False,
             priority=source_subtask.priority,
             repeat=source_subtask.repeat,
+            repeat_config=deepcopy(source_subtask.repeat_config),
             repeat_until=source_subtask.repeat_until,
             parent_id=spawned_task.id,
             position=index,
@@ -634,7 +646,7 @@ def _spawn_next_recurring_task(task: Task, session: Session) -> Task | None:
             detail="Recurring tasks require a due date.",
         )
 
-    next_due_date = _resolve_next_due_date(task.repeat, task.due_date)
+    next_due_date = _resolve_next_due_date(task.repeat, task.due_date, parse_repeat_config(task.repeat_config))
     if task.repeat_until is not None and next_due_date > task.repeat_until:
         return None
 
@@ -648,6 +660,7 @@ def _spawn_next_recurring_task(task: Task, session: Session) -> Task | None:
         is_pinned=False if task.parent_id is not None else task.is_pinned,
         priority=task.priority,
         repeat=task.repeat,
+        repeat_config=deepcopy(task.repeat_config),
         repeat_until=task.repeat_until,
         parent_id=task.parent_id,
         position=_resolve_next_position(session, task.parent_id),

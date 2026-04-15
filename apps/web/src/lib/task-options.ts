@@ -65,6 +65,7 @@ export const TASK_REPEAT_OPTIONS: TaskRepeatOption[] = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom" },
 ];
 
 export function getTaskPriorityOption(priority: TaskPriority): TaskPriorityOption {

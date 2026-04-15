@@ -5,8 +5,8 @@ import { PriorityCheckbox } from "@/components/priority-checkbox";
 import { Badge } from "@/components/ui/badge";
 import { formatDueDateLabel } from "@/lib/date";
 import { hasMeaningfulDescription } from "@/lib/task-description";
-import { getTaskRepeatOption } from "@/lib/task-options";
 import { getSubtaskProgressSummary } from "@/lib/task-progress";
+import { getTaskRepeatSummary } from "@/lib/task-repeat";
 import type { ReorderInsertDirection, TaskDropDirection } from "@/lib/task-reorder";
 import { isTaskOverdue } from "@/lib/task-groups";
 import type { ListItem, TaskItem, TaskSubtask } from "@/lib/types";
@@ -170,7 +170,7 @@ function TaskCardInner({
             {task.repeat !== "none" ? (
               <Badge>
                 <Repeat2 className="mr-1 h-3.5 w-3.5" />
-                {getTaskRepeatOption(task.repeat).label}
+                {getTaskRepeatSummary(task.repeat, task.repeat_config)}
               </Badge>
             ) : null}
           </div>

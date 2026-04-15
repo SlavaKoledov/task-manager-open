@@ -43,6 +43,7 @@ import com.taskmanager.android.model.ListItem
 import com.taskmanager.android.model.NewTaskPlacement
 import com.taskmanager.android.model.TaskEditorContext
 import com.taskmanager.android.model.TaskItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
 import com.taskmanager.android.model.TaskPriority
 import com.taskmanager.android.model.TaskRepeat
 import com.taskmanager.android.model.TaskSubtask
@@ -177,6 +178,7 @@ class TaskManagerRepository @Inject constructor(
             descriptionBlocks = payload.descriptionBlocks,
             dueDate = payload.dueDate,
             reminderTime = payload.reminderTime,
+            repeatConfig = payload.repeatConfig?.toDomain(),
             repeatUntil = payload.repeatUntil,
             isDone = payload.isDone,
             isPinned = payload.isPinned,
@@ -943,6 +945,7 @@ class TaskManagerRepository @Inject constructor(
             descriptionBlocksJson = localCacheMapper.encodeDescriptionBlocks(payload.descriptionBlocks),
             dueDate = payload.dueDate,
             reminderTime = payload.reminderTime,
+            repeatConfigJson = null,
             repeatUntil = null,
             isDone = payload.isDone,
             isPinned = false,
@@ -1227,6 +1230,7 @@ class TaskManagerRepository @Inject constructor(
         descriptionBlocks = payload.descriptionBlocks.map { it.toDomain() },
         dueDate = payload.dueDate,
         reminderTime = payload.reminderTime,
+        repeatConfig = payload.repeatConfig?.toDomain(),
         repeatUntil = payload.repeatUntil,
         isDone = payload.isDone,
         isPinned = payload.isPinned,
@@ -1245,6 +1249,7 @@ class TaskManagerRepository @Inject constructor(
                 descriptionBlocks = subtask.descriptionBlocks.map { it.toDomain() },
                 dueDate = subtask.dueDate,
                 reminderTime = subtask.reminderTime,
+                repeatConfig = null,
                 repeatUntil = null,
                 isDone = subtask.isDone,
                 isPinned = false,
@@ -1290,6 +1295,7 @@ class TaskManagerRepository @Inject constructor(
         }
 
         val nextDueDate = if (patch.hasDueDate) patch.dueDate else originalEntity.dueDate
+        val originalRepeatConfig = localCacheMapper.decodeRepeatConfig(originalEntity.repeatConfigJson)
         val nextReminderTime = if (nextDueDate == null) {
             null
         } else if (patch.hasReminderTime) {
@@ -1298,6 +1304,11 @@ class TaskManagerRepository @Inject constructor(
             originalEntity.reminderTime
         }
         val nextRepeat = if (patch.hasRepeat) patch.repeat ?: originalEntity.repeat else originalEntity.repeat
+        val nextRepeatConfig = when {
+            nextRepeat != TaskRepeat.CUSTOM.wire -> null
+            patch.hasRepeatConfig -> patch.repeatConfig ?: originalRepeatConfig
+            else -> originalRepeatConfig
+        }
         val nextRepeatUntil = if (nextRepeat == TaskRepeat.NONE.wire) {
             null
         } else if (patch.hasRepeatUntil) {
@@ -1330,6 +1341,7 @@ class TaskManagerRepository @Inject constructor(
             },
             dueDate = nextDueDate,
             reminderTime = nextReminderTime,
+            repeatConfigJson = localCacheMapper.encodeRepeatConfig(nextRepeatConfig),
             repeatUntil = nextRepeatUntil,
             isDone = nextIsDone,
             isPinned = if (originalEntity.parentId != null) {
@@ -1375,6 +1387,7 @@ class TaskManagerRepository @Inject constructor(
                 descriptionBlocks = localCacheMapper.decodeDescriptionBlocks(updatedEntity.descriptionBlocksJson),
                 dueDate = updatedEntity.dueDate,
                 reminderTime = updatedEntity.reminderTime,
+                repeatConfig = localCacheMapper.decodeRepeatConfig(updatedEntity.repeatConfigJson),
                 repeatUntil = updatedEntity.repeatUntil,
                 isDone = updatedEntity.isDone,
                 isPinned = updatedEntity.isPinned,
@@ -1605,6 +1618,8 @@ class TaskManagerRepository @Inject constructor(
         hasDueDate = patch.hasDueDate,
         reminderTime = if (patch.hasReminderTime) entity.reminderTime else null,
         hasReminderTime = patch.hasReminderTime,
+        repeatConfig = if (patch.hasRepeatConfig) localCacheMapper.decodeRepeatConfig(entity.repeatConfigJson) else null,
+        hasRepeatConfig = patch.hasRepeatConfig,
         repeatUntil = if (patch.hasRepeatUntil) entity.repeatUntil else null,
         hasRepeatUntil = patch.hasRepeatUntil,
         isPinned = if (patch.hasIsPinned) entity.isPinned else null,
@@ -1711,6 +1726,11 @@ class TaskManagerRepository @Inject constructor(
                 },
                 dueDate = if (override.hasDueDate) override.dueDate else entity.dueDate,
                 reminderTime = if (override.hasReminderTime) override.reminderTime else entity.reminderTime,
+                repeatConfigJson = if (override.hasRepeatConfig) {
+                    localCacheMapper.encodeRepeatConfig(override.repeatConfig)
+                } else {
+                    entity.repeatConfigJson
+                },
                 repeatUntil = if (override.hasRepeatUntil) override.repeatUntil else entity.repeatUntil,
                 isPinned = if (entity.parentId != null) {
                     false
@@ -1817,6 +1837,10 @@ class TaskManagerRepository @Inject constructor(
         hasDueDate = "due_date" in payload,
         reminderTime = payload["reminder_time"]?.jsonPrimitive?.contentOrNull,
         hasReminderTime = "reminder_time" in payload,
+        repeatConfig = payload["repeat_config"]?.takeUnless { it is JsonNull }?.let { element ->
+            json.decodeFromJsonElement(TaskCustomRepeatConfig.serializer(), element)
+        },
+        hasRepeatConfig = "repeat_config" in payload,
         repeatUntil = payload["repeat_until"]?.jsonPrimitive?.contentOrNull,
         hasRepeatUntil = "repeat_until" in payload,
         isDone = payload["is_done"]?.jsonPrimitive?.booleanOrNull,
@@ -1877,6 +1901,8 @@ class TaskManagerRepository @Inject constructor(
         val hasDueDate: Boolean = false,
         val reminderTime: String? = null,
         val hasReminderTime: Boolean = false,
+        val repeatConfig: TaskCustomRepeatConfig? = null,
+        val hasRepeatConfig: Boolean = false,
         val repeatUntil: String? = null,
         val hasRepeatUntil: Boolean = false,
         val isDone: Boolean? = null,

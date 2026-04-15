@@ -2,18 +2,24 @@ package com.taskmanager.android.ui.screens
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -24,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,20 +41,32 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.data.api.ApiTaskCreatePayload
+import com.taskmanager.android.domain.buildCalendarMonthDays
 import com.taskmanager.android.domain.buildTaskCreatePayloadFromDraft
 import com.taskmanager.android.domain.buildTaskDraft
 import com.taskmanager.android.domain.buildTaskUpdatePayloadJson
+import com.taskmanager.android.domain.ensureCustomRepeatConfig
 import com.taskmanager.android.domain.getSubtaskProgressSummary
+import com.taskmanager.android.domain.getTaskRepeatSummary
+import com.taskmanager.android.domain.normalizeCustomRepeatConfig
+import com.taskmanager.android.domain.switchCustomRepeatUnit
 import com.taskmanager.android.domain.updateDraftDate
 import com.taskmanager.android.domain.updateDraftRepeat
 import com.taskmanager.android.domain.validateTaskDraft
 import com.taskmanager.android.model.EditableSubtaskDraft
 import com.taskmanager.android.model.ListItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
 import com.taskmanager.android.model.TaskDraft
 import com.taskmanager.android.model.TaskEditorContext
 import com.taskmanager.android.model.TaskItem
@@ -57,9 +76,14 @@ import com.taskmanager.android.ui.components.EditableSubtaskItem
 import com.taskmanager.android.ui.components.PriorityCheckbox
 import com.taskmanager.android.ui.components.SubtaskDraftList
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -88,21 +112,32 @@ fun TaskEditorScreen(
     var showReminderTimePicker by remember { mutableStateOf(false) }
     var showRepeatUntilPicker by remember { mutableStateOf(false) }
     var initializedKey by remember { mutableStateOf<String?>(null) }
+    var customYearlyVisibleMonth by remember { mutableStateOf(YearMonth.now()) }
     val subtaskProgress = getSubtaskProgressSummary(
         done = if (task == null) createSubtasks.count(EditableSubtaskDraft::isDone) else task.subtasks.count { it.isDone },
         total = if (task == null) createSubtasks.size else task.subtasks.size,
     )
+    val customRepeatAnchorDate =
+        draft.dueDate.takeIf(String::isNotBlank)?.let(LocalDate::parse) ?: LocalDate.now()
+    val customRepeatConfig =
+        if (draft.repeat == TaskRepeat.CUSTOM) {
+            ensureCustomRepeatConfig(draft.repeatConfig, customRepeatAnchorDate)
+        } else {
+            null
+        }
 
     val initializationKey = task?.id?.toString() ?: "create:${editorContext.viewTarget.mode}:${editorContext.groupId?.wire}:${editorContext.sectionId?.wire}"
     LaunchedEffect(initializationKey) {
         if (initializedKey == initializationKey) return@LaunchedEffect
         initializedKey = initializationKey
-        draft = task?.let(::buildTaskDraft)
+        val nextDraft = task?.let(::buildTaskDraft)
             ?: buildTaskDraft(
                 context = editorContext,
                 todayString = com.taskmanager.android.domain.getLocalDateString(),
                 tomorrowString = com.taskmanager.android.domain.getTomorrowDateString(),
             )
+        draft = nextDraft
+        customYearlyVisibleMonth = initialCustomYearlyVisibleMonth(nextDraft.repeatConfig, nextDraft.dueDate)
         createSubtasks = emptyList()
         localSubtaskId = -1L
         errorMessage = null
@@ -217,7 +252,9 @@ fun TaskEditorScreen(
                             }
                         }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("task-editor-submit"),
                 ) {
                     Text(if (task == null) "Create task" else "Save changes")
                 }
@@ -292,10 +329,37 @@ fun TaskEditorScreen(
                     TaskRepeat.entries.forEach { repeat ->
                         FilterChip(
                             selected = draft.repeat == repeat,
-                            onClick = { draft = updateDraftRepeat(draft, repeat) },
+                            onClick = {
+                                draft = updateDraftRepeat(draft, repeat)
+                                if (repeat == TaskRepeat.CUSTOM) {
+                                    customYearlyVisibleMonth = initialCustomYearlyVisibleMonth(
+                                        draft.repeatConfig,
+                                        draft.dueDate,
+                                    )
+                                }
+                            },
+                            modifier = Modifier.testTag("task-repeat-${repeat.wire}"),
                             label = { Text(repeat.title) },
                         )
                     }
+                }
+                if (draft.repeat != TaskRepeat.NONE) {
+                    Text(
+                        text = getTaskRepeatSummary(draft.repeat, draft.repeatConfig),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (customRepeatConfig != null) {
+                    CustomRepeatEditor(
+                        config = customRepeatConfig,
+                        visibleYearMonth = customYearlyVisibleMonth,
+                        onVisibleYearMonthChange = { customYearlyVisibleMonth = it },
+                        onConfigChange = { nextConfig ->
+                            draft = draft.copy(repeatConfig = normalizeCustomRepeatConfig(nextConfig))
+                        },
+                        anchorDate = customRepeatAnchorDate,
+                    )
                 }
                 if (draft.repeat != TaskRepeat.NONE) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -487,4 +551,239 @@ fun TaskEditorScreen(
             },
         )
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CustomRepeatEditor(
+    config: TaskCustomRepeatConfig,
+    visibleYearMonth: YearMonth,
+    onVisibleYearMonthChange: (YearMonth) -> Unit,
+    onConfigChange: (TaskCustomRepeatConfig) -> Unit,
+    anchorDate: LocalDate,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Every", style = MaterialTheme.typography.bodyMedium)
+            OutlinedTextField(
+                value = config.interval.toString(),
+                    onValueChange = { value ->
+                    val digitsOnly = value.filter(Char::isDigit)
+                    val nextInterval = digitsOnly.toIntOrNull()?.takeIf { it >= 1 } ?: return@OutlinedTextField
+                    onConfigChange(config.copy(interval = nextInterval))
+                },
+                modifier = Modifier.weight(1f),
+                label = { Text("Interval") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        }
+
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TaskCustomRepeatUnit.entries.forEach { unit ->
+                FilterChip(
+                    selected = config.unit == unit,
+                    onClick = { onConfigChange(switchCustomRepeatUnit(config, unit, anchorDate)) },
+                    modifier = Modifier.testTag("custom-repeat-unit-${unit.wire}"),
+                    label = { Text(unit.wire.replaceFirstChar { it.uppercase() }) },
+                )
+            }
+        }
+
+        when (config.unit) {
+            TaskCustomRepeatUnit.DAY -> {
+                FilterChip(
+                    selected = config.skipWeekends,
+                    onClick = { onConfigChange(config.copy(skipWeekends = !config.skipWeekends)) },
+                    label = { Text("Skip weekends") },
+                )
+            }
+
+            TaskCustomRepeatUnit.WEEK -> {
+                Text("Repeat on", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WEEKDAY_LETTERS.forEachIndexed { index, label ->
+                        val weekday = index + 1
+                        val selected = weekday in config.weekdays
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                val nextWeekdays = if (selected) {
+                                    config.weekdays.filterNot { it == weekday }
+                                } else {
+                                    (config.weekdays + weekday).distinct().sorted()
+                                }
+                                onConfigChange(config.copy(weekdays = nextWeekdays))
+                            },
+                            modifier = Modifier
+                                .testTag("custom-repeat-weekday-$weekday")
+                                .semantics { contentDescription = WEEKDAY_NAMES[index] },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+            }
+
+            TaskCustomRepeatUnit.MONTH -> {
+                Text("Day of month", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (1..31).forEach { day ->
+                        FilterChip(
+                            selected = config.monthDay == day,
+                            onClick = { onConfigChange(config.copy(monthDay = day)) },
+                            modifier = Modifier.testTag("custom-repeat-month-day-$day"),
+                            label = { Text(day.toString()) },
+                        )
+                    }
+                }
+                FilterChip(
+                    selected = config.skipWeekends,
+                    onClick = { onConfigChange(config.copy(skipWeekends = !config.skipWeekends)) },
+                    label = { Text("Skip weekends") },
+                )
+            }
+
+            TaskCustomRepeatUnit.YEAR -> {
+                YearlyRepeatCalendar(
+                    config = config,
+                    visibleYearMonth = visibleYearMonth,
+                    onVisibleYearMonthChange = onVisibleYearMonthChange,
+                    onConfigChange = onConfigChange,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearlyRepeatCalendar(
+    config: TaskCustomRepeatConfig,
+    visibleYearMonth: YearMonth,
+    onVisibleYearMonthChange: (YearMonth) -> Unit,
+    onConfigChange: (TaskCustomRepeatConfig) -> Unit,
+) {
+    val selectedMonth = config.month ?: visibleYearMonth.monthValue
+    val selectedDay = config.day ?: 1
+    val selectedDate = LocalDate.of(2024, selectedMonth, minOf(selectedDay, YearMonth.of(2024, selectedMonth).lengthOfMonth()))
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = visibleYearMonth.month.getDisplayName(TextStyle.FULL, Locale.US),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { onVisibleYearMonthChange(visibleYearMonth.minusMonths(1)) }) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Previous custom repeat month",
+                    modifier = Modifier.testTag("custom-repeat-year-prev"),
+                )
+            }
+            IconButton(onClick = { onVisibleYearMonthChange(visibleYearMonth.plusMonths(1)) }) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = "Next custom repeat month",
+                    modifier = Modifier.testTag("custom-repeat-year-next"),
+                )
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            WEEKDAY_LETTERS.forEach { label ->
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        buildCalendarMonthDays(visibleYearMonth).chunked(7).forEach { week ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                week.forEach { day ->
+                    val isSelected =
+                        day.isCurrentMonth &&
+                            day.date.monthValue == selectedDate.monthValue &&
+                            day.date.dayOfMonth == selectedDate.dayOfMonth
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .size(40.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (day.isCurrentMonth) 0.55f else 0.25f)
+                        },
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (day.isCurrentMonth) {
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                            } else {
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                            },
+                        ),
+                        onClick = {
+                            onConfigChange(
+                                config.copy(
+                                    month = day.date.monthValue,
+                                    day = day.date.dayOfMonth,
+                                ),
+                            )
+                            onVisibleYearMonthChange(YearMonth.of(2024, day.date.monthValue))
+                        },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = day.date.dayOfMonth.toString(),
+                                modifier = Modifier.testTag(
+                                    "custom-repeat-year-day-${day.date.monthValue}-${day.date.dayOfMonth}",
+                                ),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else if (day.isCurrentMonth) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val WEEKDAY_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
+private val WEEKDAY_NAMES = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+private fun initialCustomYearlyVisibleMonth(
+    repeatConfig: TaskCustomRepeatConfig?,
+    dueDate: String,
+): YearMonth {
+    val normalized = normalizeCustomRepeatConfig(repeatConfig)
+    if (normalized?.unit == TaskCustomRepeatUnit.YEAR && normalized.month != null) {
+        return YearMonth.of(2024, normalized.month)
+    }
+
+    val anchorDate = dueDate.takeIf(String::isNotBlank)?.let(LocalDate::parse) ?: LocalDate.now()
+    return YearMonth.of(2024, anchorDate.monthValue)
 }

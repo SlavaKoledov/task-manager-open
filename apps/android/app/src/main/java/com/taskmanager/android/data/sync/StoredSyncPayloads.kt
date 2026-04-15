@@ -4,7 +4,9 @@ import com.taskmanager.android.data.api.ApiDescriptionBlock
 import com.taskmanager.android.data.api.ApiTaskCreatePayload
 import com.taskmanager.android.data.api.ApiTaskCreateSubtaskPayload
 import com.taskmanager.android.data.api.ApiTaskUpdatePayload
+import com.taskmanager.android.data.api.toApi
 import com.taskmanager.android.model.NewTaskPlacement
+import com.taskmanager.android.model.TaskCustomRepeatConfig
 import com.taskmanager.android.model.TaskTopLevelReorderScope
 import com.taskmanager.android.model.ViewMode
 import kotlinx.serialization.Serializable
@@ -18,6 +20,7 @@ data class StoredTaskCreatePayload(
     val descriptionBlocks: List<ApiDescriptionBlock> = emptyList(),
     val dueDate: String? = null,
     val reminderTime: String? = null,
+    val repeatConfig: TaskCustomRepeatConfig? = null,
     val repeatUntil: String? = null,
     val isDone: Boolean = false,
     val isPinned: Boolean = false,
@@ -35,6 +38,7 @@ data class StoredTaskCreatePayload(
         descriptionBlocks = descriptionBlocks,
         dueDate = dueDate,
         reminderTime = reminderTime,
+        repeatConfig = repeatConfig?.toApi(),
         repeatUntil = repeatUntil,
         isDone = isDone,
         isPinned = isPinned,
@@ -95,6 +99,8 @@ data class StoredTaskUpdatePayload(
     val hasDueDate: Boolean = false,
     val reminderTime: String? = null,
     val hasReminderTime: Boolean = false,
+    val repeatConfig: TaskCustomRepeatConfig? = null,
+    val hasRepeatConfig: Boolean = false,
     val repeatUntil: String? = null,
     val hasRepeatUntil: Boolean = false,
     val isPinned: Boolean? = null,
@@ -112,6 +118,7 @@ data class StoredTaskUpdatePayload(
         descriptionBlocks = if (hasDescriptionBlocks) descriptionBlocks else null,
         dueDate = if (hasDueDate) dueDate else null,
         reminderTime = if (hasReminderTime) reminderTime else null,
+        repeatConfig = if (hasRepeatConfig) repeatConfig?.toApi() else null,
         repeatUntil = if (hasRepeatUntil) repeatUntil else null,
         isPinned = if (hasIsPinned) isPinned else null,
         priority = priority.takeIf { hasPriority },
@@ -130,6 +137,8 @@ data class StoredTaskUpdatePayload(
         hasDueDate = hasDueDate || newer.hasDueDate,
         reminderTime = if (newer.hasReminderTime) newer.reminderTime else reminderTime,
         hasReminderTime = hasReminderTime || newer.hasReminderTime,
+        repeatConfig = if (newer.hasRepeatConfig) newer.repeatConfig else repeatConfig,
+        hasRepeatConfig = hasRepeatConfig || newer.hasRepeatConfig,
         repeatUntil = if (newer.hasRepeatUntil) newer.repeatUntil else repeatUntil,
         hasRepeatUntil = hasRepeatUntil || newer.hasRepeatUntil,
         isPinned = if (newer.hasIsPinned) newer.isPinned else isPinned,

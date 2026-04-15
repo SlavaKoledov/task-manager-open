@@ -13,7 +13,17 @@ export type TaskPriority =
   | "urgent_unimportant"
   | "not_urgent_unimportant";
 
-export type TaskRepeat = "none" | "daily" | "weekly" | "monthly" | "yearly";
+export type TaskRepeat = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
+export type TaskCustomRepeatUnit = "day" | "week" | "month" | "year";
+export type TaskCustomRepeatConfig = {
+  interval: number;
+  unit: TaskCustomRepeatUnit;
+  skip_weekends: boolean;
+  weekdays: number[];
+  month_day: number | null;
+  month: number | null;
+  day: number | null;
+};
 export type AllTaskGroupId = "overdue" | "today" | "tomorrow" | "next_7_days" | "later" | "no_date";
 export type TaskSectionId = "pinned" | TaskPriority;
 export type TaskTopLevelReorderScope =
@@ -76,6 +86,7 @@ export type TaskSubtask = {
   description_blocks: DescriptionBlock[];
   due_date: string | null;
   reminder_time: string | null;
+  repeat_config?: TaskCustomRepeatConfig | null;
   repeat_until: string | null;
   is_done: boolean;
   is_pinned: boolean;
@@ -103,6 +114,7 @@ export type TaskEditableFields = {
   description_blocks: DescriptionBlock[];
   due_date: string | null;
   reminder_time: string | null;
+  repeat_config?: TaskCustomRepeatConfig | null;
   repeat_until: string | null;
   is_done: boolean;
   is_pinned: boolean;
@@ -140,6 +152,7 @@ export type TaskDraft = {
   description_blocks: DescriptionBlock[];
   due_date: string;
   reminder_time: string;
+  repeat_config: TaskCustomRepeatConfig | null;
   repeat_until: string;
   is_done: boolean;
   is_pinned: boolean;

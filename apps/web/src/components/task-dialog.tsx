@@ -18,6 +18,7 @@ import {
   buildTaskUpdatePayloadFromDraft,
   validateTaskDraft,
 } from "@/lib/task-dialog-state";
+import { buildDefaultCustomRepeatConfig } from "@/lib/task-repeat";
 import { getSubtaskProgressSummary } from "@/lib/task-progress";
 import type {
   ListItem,
@@ -67,6 +68,7 @@ function buildLocalDraftSubtask(id: number, title: string, position: number, dra
     description_blocks: [],
     due_date: null,
     reminder_time: null,
+    repeat_config: null,
     repeat_until: null,
     is_done: false,
     is_pinned: false,
@@ -120,6 +122,7 @@ export function TaskDialog({
         description_blocks: nextDescriptionBlocks,
         due_date: task.due_date ?? "",
         reminder_time: task.reminder_time ?? "",
+        repeat_config: task.repeat_config ?? null,
         repeat_until: task.repeat_until ?? "",
         is_done: task.is_done,
         is_pinned: task.is_pinned,
@@ -236,6 +239,7 @@ export function TaskDialog({
       reminder_time: nextDate ? current.reminder_time : "",
       repeat_until: !nextDate || (current.repeat_until && current.repeat_until < nextDate) ? "" : current.repeat_until,
       repeat: nextDate ? current.repeat : "none",
+      repeat_config: current.repeat_config,
     }));
   }, []);
 
@@ -248,7 +252,15 @@ export function TaskDialog({
       ...current,
       repeat: nextRepeat,
       repeat_until: nextRepeat === "none" ? "" : current.repeat_until,
+      repeat_config:
+        nextRepeat === "custom"
+          ? current.repeat_config ?? buildDefaultCustomRepeatConfig("day", current.due_date || defaultDraft.due_date || "")
+          : current.repeat_config,
     }));
+  }, [defaultDraft.due_date]);
+
+  const handleRepeatConfigChange = useCallback((nextRepeatConfig: TaskDraft["repeat_config"]) => {
+    setDraft((current) => ({ ...current, repeat_config: nextRepeatConfig }));
   }, []);
 
   const handleRepeatUntilChange = useCallback((nextRepeatUntil: string) => {
@@ -412,10 +424,12 @@ export function TaskDialog({
                   value={draft.due_date}
                   reminderTime={draft.reminder_time}
                   repeat={draft.repeat}
+                  repeatConfig={draft.repeat_config}
                   repeatUntil={draft.repeat_until}
                   onDateChange={handleDateChange}
                   onReminderTimeChange={handleReminderTimeChange}
                   onRepeatChange={handleRepeatChange}
+                  onRepeatConfigChange={handleRepeatConfigChange}
                   onRepeatUntilChange={handleRepeatUntilChange}
                 />
               </div>

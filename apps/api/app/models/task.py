@@ -31,6 +31,14 @@ class TaskRepeat(str, Enum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     YEARLY = "yearly"
+    CUSTOM = "custom"
+
+
+class TaskCustomRepeatUnit(str, Enum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
 
 
 class Task(Base):
@@ -82,6 +90,7 @@ class Task(Base):
         default=TaskRepeat.NONE,
         server_default=TaskRepeat.NONE.value,
     )
+    repeat_config: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=True,

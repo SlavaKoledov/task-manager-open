@@ -25,6 +25,7 @@ export function buildTaskDraft(
     description_blocks: createEmptyDescription(),
     due_date: resolvedDueDate,
     reminder_time: "",
+    repeat_config: null,
     repeat_until: "",
     is_done: false,
     is_pinned: false,

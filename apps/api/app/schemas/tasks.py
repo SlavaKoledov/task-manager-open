@@ -1,15 +1,58 @@
 from __future__ import annotations
 
 import re
+from calendar import monthrange
 from datetime import date, datetime
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.task import TaskPriority, TaskRepeat
+from app.models.task import TaskCustomRepeatUnit, TaskPriority, TaskRepeat
 from app.schemas.task_description import TaskDescriptionBlock
 
 REMINDER_TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+
+
+class TaskCustomRepeatConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval: int = Field(default=1, ge=1)
+    unit: TaskCustomRepeatUnit
+    skip_weekends: bool = Field(default=False, alias="skip_weekends")
+    weekdays: list[int] = Field(default_factory=list)
+    month_day: int | None = Field(default=None, ge=1, le=31)
+    month: int | None = Field(default=None, ge=1, le=12)
+    day: int | None = Field(default=None, ge=1, le=31)
+
+    @field_validator("weekdays")
+    @classmethod
+    def normalize_weekdays(cls, value: list[int]) -> list[int]:
+        normalized = sorted(set(value))
+        if any(day < 1 or day > 7 for day in normalized):
+            raise ValueError("Weekdays must use ISO weekday numbers from 1 to 7.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_configuration(self) -> "TaskCustomRepeatConfig":
+        if self.unit == TaskCustomRepeatUnit.WEEK:
+            if not self.weekdays:
+                raise ValueError("Weekly custom repeat requires at least one weekday.")
+            return self
+
+        if self.unit == TaskCustomRepeatUnit.MONTH:
+            if self.month_day is None:
+                raise ValueError("Monthly custom repeat requires month_day.")
+            return self
+
+        if self.unit == TaskCustomRepeatUnit.YEAR:
+            if self.month is None or self.day is None:
+                raise ValueError("Yearly custom repeat requires month and day.")
+            max_day = monthrange(2024 if self.month == 2 else 2025, self.month)[1]
+            if self.day > max_day:
+                raise ValueError("Yearly custom repeat day is invalid for the selected month.")
+            return self
+
+        return self
 
 
 class TaskSubtaskCreate(BaseModel):
@@ -67,6 +110,7 @@ class TaskCreate(BaseModel):
     is_pinned: bool = False
     priority: TaskPriority = TaskPriority.NOT_URGENT_UNIMPORTANT
     repeat: TaskRepeat = TaskRepeat.NONE
+    repeat_config: TaskCustomRepeatConfig | None = None
     repeat_until: date | None = None
     parent_id: int | None = None
     list_id: int | None = None
@@ -114,6 +158,7 @@ class TaskUpdate(BaseModel):
     is_pinned: bool | None = None
     priority: TaskPriority | None = None
     repeat: TaskRepeat | None = None
+    repeat_config: TaskCustomRepeatConfig | None = None
     repeat_until: date | None = None
     list_id: int | None = None
 
@@ -154,6 +199,7 @@ class TaskSubtaskRead(BaseModel):
     is_pinned: bool
     priority: TaskPriority
     repeat: TaskRepeat
+    repeat_config: TaskCustomRepeatConfig | None = None
     repeat_until: date | None
     parent_id: int | None
     position: int

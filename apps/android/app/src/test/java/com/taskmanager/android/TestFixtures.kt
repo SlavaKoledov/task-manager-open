@@ -2,6 +2,7 @@ package com.taskmanager.android
 
 import com.taskmanager.android.model.DescriptionBlock
 import com.taskmanager.android.model.ListItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
 import com.taskmanager.android.model.TaskItem
 import com.taskmanager.android.model.TaskPriority
 import com.taskmanager.android.model.TaskRepeat
@@ -27,6 +28,7 @@ fun testTaskSubtask(
     dueDate: String? = null,
     reminderTime: String? = null,
     isDone: Boolean = false,
+    repeatConfig: TaskCustomRepeatConfig? = null,
     repeatUntil: String? = null,
     repeat: TaskRepeat = TaskRepeat.NONE,
     position: Int = 0,
@@ -38,6 +40,7 @@ fun testTaskSubtask(
     descriptionBlocks = descriptionBlocks,
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig,
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = false,
@@ -57,6 +60,7 @@ fun testTaskItem(
     reminderTime: String? = null,
     isDone: Boolean = false,
     isPinned: Boolean = false,
+    repeatConfig: TaskCustomRepeatConfig? = null,
     priority: TaskPriority = TaskPriority.NOT_URGENT_UNIMPORTANT,
     repeat: TaskRepeat = TaskRepeat.NONE,
     repeatUntil: String? = null,
@@ -72,6 +76,7 @@ fun testTaskItem(
     descriptionBlocks = descriptionBlocks,
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig,
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = isPinned,

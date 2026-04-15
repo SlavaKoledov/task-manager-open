@@ -3,6 +3,8 @@ package com.taskmanager.android.data.api
 import com.taskmanager.android.model.AllTaskGroupId
 import com.taskmanager.android.model.DescriptionBlock
 import com.taskmanager.android.model.ListItem
+import com.taskmanager.android.model.TaskCustomRepeatConfig
+import com.taskmanager.android.model.TaskCustomRepeatUnit
 import com.taskmanager.android.model.TaskItem
 import com.taskmanager.android.model.TaskInsertDirection
 import com.taskmanager.android.model.TaskPriority
@@ -42,6 +44,17 @@ sealed interface ApiDescriptionBlock {
 }
 
 @Serializable
+data class ApiTaskCustomRepeatConfig(
+    val interval: Int = 1,
+    val unit: String,
+    @SerialName("skip_weekends") val skipWeekends: Boolean = false,
+    val weekdays: List<Int> = emptyList(),
+    @SerialName("month_day") val monthDay: Int? = null,
+    val month: Int? = null,
+    val day: Int? = null,
+)
+
+@Serializable
 data class ApiTask(
     val id: Int,
     val title: String,
@@ -49,6 +62,7 @@ data class ApiTask(
     @SerialName("description_blocks") val descriptionBlocks: List<ApiDescriptionBlock> = emptyList(),
     @SerialName("due_date") val dueDate: String? = null,
     @SerialName("reminder_time") val reminderTime: String? = null,
+    @SerialName("repeat_config") val repeatConfig: ApiTaskCustomRepeatConfig? = null,
     @SerialName("repeat_until") val repeatUntil: String? = null,
     @SerialName("is_done") val isDone: Boolean,
     @SerialName("is_pinned") val isPinned: Boolean,
@@ -85,6 +99,7 @@ data class ApiTaskCreatePayload(
     @SerialName("description_blocks") val descriptionBlocks: List<ApiDescriptionBlock> = emptyList(),
     @SerialName("due_date") val dueDate: String? = null,
     @SerialName("reminder_time") val reminderTime: String? = null,
+    @SerialName("repeat_config") val repeatConfig: ApiTaskCustomRepeatConfig? = null,
     @SerialName("repeat_until") val repeatUntil: String? = null,
     @SerialName("is_done") val isDone: Boolean = false,
     @SerialName("is_pinned") val isPinned: Boolean = false,
@@ -103,6 +118,7 @@ data class ApiTaskUpdatePayload(
     @SerialName("description_blocks") val descriptionBlocks: List<ApiDescriptionBlock>? = null,
     @SerialName("due_date") val dueDate: String? = null,
     @SerialName("reminder_time") val reminderTime: String? = null,
+    @SerialName("repeat_config") val repeatConfig: ApiTaskCustomRepeatConfig? = null,
     @SerialName("repeat_until") val repeatUntil: String? = null,
     @SerialName("is_pinned") val isPinned: Boolean? = null,
     val priority: String? = null,
@@ -177,6 +193,26 @@ fun DescriptionBlock.toApi(): ApiDescriptionBlock = when (this) {
     is DescriptionBlock.Checkbox -> ApiDescriptionBlock.Checkbox(text = text, checked = checked)
 }
 
+fun ApiTaskCustomRepeatConfig.toDomain(): TaskCustomRepeatConfig = TaskCustomRepeatConfig(
+    interval = interval,
+    unit = TaskCustomRepeatUnit.fromWire(unit),
+    skipWeekends = skipWeekends,
+    weekdays = weekdays,
+    monthDay = monthDay,
+    month = month,
+    day = day,
+)
+
+fun TaskCustomRepeatConfig.toApi(): ApiTaskCustomRepeatConfig = ApiTaskCustomRepeatConfig(
+    interval = interval,
+    unit = unit.wire,
+    skipWeekends = skipWeekends,
+    weekdays = weekdays,
+    monthDay = monthDay,
+    month = month,
+    day = day,
+)
+
 private fun ApiTask.toDomainSubtask(): TaskSubtask = TaskSubtask(
     id = id,
     title = title,
@@ -184,6 +220,7 @@ private fun ApiTask.toDomainSubtask(): TaskSubtask = TaskSubtask(
     descriptionBlocks = descriptionBlocks.map(ApiDescriptionBlock::toDomain),
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig?.toDomain(),
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = isPinned,
@@ -203,6 +240,7 @@ fun ApiTask.toDomain(): TaskItem = TaskItem(
     descriptionBlocks = descriptionBlocks.map(ApiDescriptionBlock::toDomain),
     dueDate = dueDate,
     reminderTime = reminderTime,
+    repeatConfig = repeatConfig?.toDomain(),
     repeatUntil = repeatUntil,
     isDone = isDone,
     isPinned = isPinned,

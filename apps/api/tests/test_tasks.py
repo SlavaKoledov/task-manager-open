@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import text
 
 from app.models.task import Task, TaskPriority, TaskRepeat
@@ -48,7 +49,41 @@ def test_task_enum_columns_use_lowercase_value_contract() -> None:
         "weekly",
         "monthly",
         "yearly",
+        "custom",
     ]
+
+
+def test_custom_repeat_schema_requires_weekdays_for_weekly_config() -> None:
+    with pytest.raises(ValidationError) as error:
+        TaskCreate.model_validate(
+            {
+                "title": "Weekly custom",
+                "due_date": "2026-03-18",
+                "repeat": "custom",
+                "repeat_config": {
+                    "interval": 2,
+                    "unit": "week",
+                    "weekdays": [],
+                },
+            }
+        )
+
+    assert "weekday" in str(error.value).lower()
+
+
+def test_custom_repeat_requires_repeat_config(session) -> None:
+    with pytest.raises(HTTPException) as error:
+        create_task(
+            session,
+            TaskCreate(
+                title="Custom without config",
+                due_date=date(2026, 3, 18),
+                repeat=TaskRepeat.CUSTOM,
+            ),
+        )
+
+    assert error.value.status_code == 400
+    assert error.value.detail == "Custom repeat requires a repeat configuration."
 
 
 def test_task_filters_toggle_and_updates(session) -> None:
@@ -264,6 +299,126 @@ def test_toggling_monthly_recurring_task_uses_safe_end_of_month_due_date(session
     spawned_task = next(task for task in all_tasks if task.id != recurring_task.id)
 
     assert spawned_task.due_date == date(2024, 2, 29)
+
+
+def test_toggling_custom_daily_skip_weekends_spawns_next_weekday(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Weekday standup",
+            due_date=date(2026, 3, 13),
+            repeat=TaskRepeat.CUSTOM,
+            repeat_config={
+                "interval": 1,
+                "unit": "day",
+                "skip_weekends": True,
+            },
+        ),
+    )
+
+    toggle_task(get_task_or_404(session, recurring_task.id), session)
+    spawned_task = next(task for task in list_all_tasks(session) if task.id != recurring_task.id)
+
+    assert spawned_task.due_date == date(2026, 3, 16)
+    assert spawned_task.repeat == TaskRepeat.CUSTOM
+    assert spawned_task.repeat_config == {
+        "interval": 1,
+        "unit": "day",
+        "skip_weekends": True,
+        "weekdays": [],
+        "month_day": None,
+        "month": None,
+        "day": None,
+    }
+
+
+def test_toggling_custom_weekly_repeat_uses_selected_weekdays_and_interval(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Training block",
+            due_date=date(2026, 3, 18),
+            repeat=TaskRepeat.CUSTOM,
+            repeat_config={
+                "interval": 2,
+                "unit": "week",
+                "weekdays": [1, 3, 5],
+            },
+        ),
+    )
+
+    toggle_task(get_task_or_404(session, recurring_task.id), session)
+    first_spawn = next(task for task in list_all_tasks(session) if task.id != recurring_task.id)
+    toggle_task(get_task_or_404(session, first_spawn.id), session)
+    second_spawn = max(list_all_tasks(session), key=lambda task: task.id)
+
+    assert first_spawn.due_date == date(2026, 3, 20)
+    assert second_spawn.due_date == date(2026, 3, 30)
+
+
+def test_toggling_custom_monthly_repeat_clamps_missing_month_days(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Month-end close",
+            due_date=date(2026, 1, 31),
+            repeat=TaskRepeat.CUSTOM,
+            repeat_config={
+                "interval": 1,
+                "unit": "month",
+                "month_day": 31,
+            },
+        ),
+    )
+
+    toggle_task(get_task_or_404(session, recurring_task.id), session)
+    spawned_task = next(task for task in list_all_tasks(session) if task.id != recurring_task.id)
+
+    assert spawned_task.due_date == date(2026, 2, 28)
+
+
+def test_toggling_custom_yearly_repeat_uses_safe_date_for_leap_day(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Leap reminder",
+            due_date=date(2024, 2, 29),
+            repeat=TaskRepeat.CUSTOM,
+            repeat_config={
+                "interval": 1,
+                "unit": "year",
+                "month": 2,
+                "day": 29,
+            },
+        ),
+    )
+
+    toggle_task(get_task_or_404(session, recurring_task.id), session)
+    spawned_task = next(task for task in list_all_tasks(session) if task.id != recurring_task.id)
+
+    assert spawned_task.due_date == date(2025, 2, 28)
+
+
+def test_custom_repeat_respects_repeat_until_when_spawning(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Weekday habit",
+            due_date=date(2026, 3, 13),
+            repeat=TaskRepeat.CUSTOM,
+            repeat_until=date(2026, 3, 15),
+            repeat_config={
+                "interval": 1,
+                "unit": "day",
+                "skip_weekends": True,
+            },
+        ),
+    )
+
+    toggle_task(get_task_or_404(session, recurring_task.id), session)
+
+    all_tasks = list_all_tasks(session)
+    assert [task.id for task in all_tasks] == [recurring_task.id]
 
 
 def test_resolve_next_due_date_supports_yearly_and_clamps_invalid_days() -> None:

@@ -19,6 +19,7 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
     description_blocks: [{ kind: "text", text: "" }],
     due_date: "2026-03-10",
     reminder_time: null,
+    repeat_config: null,
     repeat_until: null,
     is_done: false,
     is_pinned: false,
@@ -63,7 +64,7 @@ describe("task calendar helpers", () => {
   });
 
   it("builds daily preview dates for the current task", () => {
-    expect(buildRecurringPreviewDates("2026-03-10", "daily", undefined, 3)).toEqual([
+    expect(buildRecurringPreviewDates("2026-03-10", "daily", undefined, undefined, 3)).toEqual([
       "2026-03-11",
       "2026-03-12",
       "2026-03-13",
@@ -71,7 +72,7 @@ describe("task calendar helpers", () => {
   });
 
   it("builds weekly preview dates for the current task", () => {
-    expect(buildRecurringPreviewDates("2026-03-10", "weekly", undefined, 3)).toEqual([
+    expect(buildRecurringPreviewDates("2026-03-10", "weekly", undefined, undefined, 3)).toEqual([
       "2026-03-17",
       "2026-03-24",
       "2026-03-31",
@@ -79,7 +80,7 @@ describe("task calendar helpers", () => {
   });
 
   it("uses safe end-of-month logic for monthly preview dates", () => {
-    expect(buildRecurringPreviewDates("2024-01-31", "monthly", undefined, 3)).toEqual([
+    expect(buildRecurringPreviewDates("2024-01-31", "monthly", undefined, undefined, 3)).toEqual([
       "2024-02-29",
       "2024-03-29",
       "2024-04-29",
@@ -87,7 +88,7 @@ describe("task calendar helpers", () => {
   });
 
   it("uses safe leap-year logic for yearly preview dates", () => {
-    expect(buildRecurringPreviewDates("2024-02-29", "yearly", undefined, 4)).toEqual([
+    expect(buildRecurringPreviewDates("2024-02-29", "yearly", undefined, undefined, 4)).toEqual([
       "2025-02-28",
       "2026-02-28",
       "2027-02-28",
@@ -95,13 +96,51 @@ describe("task calendar helpers", () => {
     ]);
   });
 
+  it("builds preview dates for custom repeat schedules", () => {
+    expect(
+      buildRecurringPreviewDates(
+        "2026-03-13",
+        "custom",
+        {
+          interval: 1,
+          unit: "day",
+          skip_weekends: true,
+          weekdays: [],
+          month_day: null,
+          month: null,
+          day: null,
+        },
+        undefined,
+        3,
+      ),
+    ).toEqual(["2026-03-16", "2026-03-17", "2026-03-18"]);
+
+    expect(
+      buildRecurringPreviewDates(
+        "2026-03-16",
+        "custom",
+        {
+          interval: 2,
+          unit: "week",
+          skip_weekends: false,
+          weekdays: [1, 3, 5],
+          month_day: null,
+          month: null,
+          day: null,
+        },
+        undefined,
+        4,
+      ),
+    ).toEqual(["2026-03-18", "2026-03-20", "2026-03-30", "2026-04-01"]);
+  });
+
   it("returns no preview dates when repeat is disabled or due date is missing", () => {
-    expect(buildRecurringPreviewDates("2026-03-10", "none", undefined, 3)).toEqual([]);
-    expect(buildRecurringPreviewDates("", "daily", undefined, 3)).toEqual([]);
+    expect(buildRecurringPreviewDates("2026-03-10", "none", undefined, undefined, 3)).toEqual([]);
+    expect(buildRecurringPreviewDates("", "daily", undefined, undefined, 3)).toEqual([]);
   });
 
   it("stops previewing recurring dates after repeat_until", () => {
-    expect(buildRecurringPreviewDates("2026-03-10", "weekly", "2026-03-24", 6)).toEqual([
+    expect(buildRecurringPreviewDates("2026-03-10", "weekly", undefined, "2026-03-24", 6)).toEqual([
       "2026-03-17",
       "2026-03-24",
     ]);
@@ -165,6 +204,36 @@ describe("task calendar helpers", () => {
       "2026-03-05",
       "2026-03-12",
       "2026-03-19",
+    ]);
+  });
+
+  it("uses safe monthly custom occurrences inside visible ranges", () => {
+    const range = getCalendarMonthRange(new Date(2026, 2, 1));
+    const occurrences = buildTaskOccurrencesInRange(
+      [
+        makeTask({
+          id: 4,
+          title: "Month-end custom",
+          due_date: "2026-01-31",
+          repeat: "custom",
+          repeat_config: {
+            interval: 1,
+            unit: "month",
+            skip_weekends: false,
+            weekdays: [],
+            month_day: 31,
+            month: null,
+            day: null,
+          },
+          repeat_until: "2026-03-31",
+        }),
+      ],
+      range,
+    );
+
+    expect(occurrences.map((occurrence) => occurrence.dateString)).toEqual([
+      "2026-02-28",
+      "2026-03-31",
     ]);
   });
 

@@ -1,4 +1,5 @@
 import { addDays, getLocalDateString, parseLocalDateString } from "@/lib/date";
+import { resolveNextRecurringDate as resolveNextTaskRepeatDate } from "@/lib/task-repeat";
 import type { TaskItem, TaskRepeat } from "@/lib/types";
 
 export type CalendarDay = {
@@ -94,46 +95,18 @@ export function getCalendarWeekDays(date: Date): CalendarDay[] {
   });
 }
 
-function getLastDayOfMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function resolveNextMonthlyDate(currentDate: Date): Date {
-  const nextMonthIndex = currentDate.getMonth() + 1;
-  const nextMonthYear = currentDate.getFullYear() + Math.floor(nextMonthIndex / 12);
-  const nextMonth = nextMonthIndex % 12;
-  const nextDay = Math.min(currentDate.getDate(), getLastDayOfMonth(nextMonthYear, nextMonth));
-
-  return new Date(nextMonthYear, nextMonth, nextDay);
-}
-
-function resolveNextYearlyDate(currentDate: Date): Date {
-  const nextYear = currentDate.getFullYear() + 1;
-  const month = currentDate.getMonth();
-  const nextDay = Math.min(currentDate.getDate(), getLastDayOfMonth(nextYear, month));
-
-  return new Date(nextYear, month, nextDay);
-}
-
-export function resolveNextRecurringPreviewDate(repeat: Exclude<TaskRepeat, "none">, currentDate: Date): Date {
-  if (repeat === "daily") {
-    return addDays(currentDate, 1);
-  }
-
-  if (repeat === "weekly") {
-    return addDays(currentDate, 7);
-  }
-
-  if (repeat === "monthly") {
-    return resolveNextMonthlyDate(currentDate);
-  }
-
-  return resolveNextYearlyDate(currentDate);
+export function resolveNextRecurringPreviewDate(
+  repeat: Exclude<TaskRepeat, "none">,
+  currentDate: Date,
+  repeatConfig?: TaskItem["repeat_config"],
+): Date {
+  return resolveNextTaskRepeatDate(repeat, currentDate, repeatConfig ?? null);
 }
 
 export function buildRecurringPreviewDates(
   dueDate: string,
   repeat: TaskRepeat,
+  repeatConfig?: TaskItem["repeat_config"],
   repeatUntil?: string,
   limit = RECURRING_PREVIEW_LIMIT,
 ): string[] {
@@ -152,7 +125,7 @@ export function buildRecurringPreviewDates(
   let cursor = baseDate;
 
   for (let index = 0; index < limit; index += 1) {
-    cursor = resolveNextRecurringPreviewDate(repeat, cursor);
+    cursor = resolveNextRecurringPreviewDate(repeat, cursor, repeatConfig);
 
     if (repeatUntilDate && cursor > repeatUntilDate) {
       break;
@@ -177,8 +150,13 @@ function differenceInLocalDays(left: Date, right: Date): number {
   return Math.floor((left.getTime() - right.getTime()) / DAY_IN_MS);
 }
 
-function getFirstRecurringCandidate(baseDate: Date, repeat: Exclude<TaskRepeat, "none">, rangeStart: Date): Date {
-  const firstRecurringDate = resolveNextRecurringPreviewDate(repeat, baseDate);
+function getFirstRecurringCandidate(
+  baseDate: Date,
+  repeat: Exclude<TaskRepeat, "none">,
+  rangeStart: Date,
+  repeatConfig?: TaskItem["repeat_config"],
+): Date {
+  const firstRecurringDate = resolveNextRecurringPreviewDate(repeat, baseDate, repeatConfig);
 
   if (firstRecurringDate >= rangeStart) {
     return firstRecurringDate;
@@ -196,7 +174,7 @@ function getFirstRecurringCandidate(baseDate: Date, repeat: Exclude<TaskRepeat, 
   let cursor = firstRecurringDate;
 
   while (cursor < rangeStart) {
-    cursor = resolveNextRecurringPreviewDate(repeat, cursor);
+    cursor = resolveNextRecurringPreviewDate(repeat, cursor, repeatConfig);
   }
 
   return cursor;
@@ -229,7 +207,7 @@ export function buildTaskOccurrencesInRange(tasks: TaskItem[], range: CalendarRa
     }
 
     const repeatUntilDate = task.repeat_until ? parseLocalDateString(task.repeat_until) : null;
-    let cursor = getFirstRecurringCandidate(baseDate, task.repeat, range.start);
+    let cursor = getFirstRecurringCandidate(baseDate, task.repeat, range.start, task.repeat_config);
 
     while (cursor <= range.end) {
       if (repeatUntilDate && cursor > repeatUntilDate) {
@@ -243,7 +221,7 @@ export function buildTaskOccurrencesInRange(tasks: TaskItem[], range: CalendarRa
         isRecurring: true,
       });
 
-      cursor = resolveNextRecurringPreviewDate(task.repeat, cursor);
+      cursor = resolveNextRecurringPreviewDate(task.repeat, cursor, task.repeat_config);
     }
   }
 

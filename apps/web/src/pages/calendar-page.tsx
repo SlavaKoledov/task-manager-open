@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, Plus, Rows3 } from "lucide-react";
 
@@ -59,10 +59,50 @@ type CalendarViewMode = "month" | "week";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_DAY_OCCURRENCE_LIMIT = 3;
+const MONTH_AGENDA_MIN_WIDTH = 240;
+const MONTH_AGENDA_MAX_WIDTH = 440;
+const MONTH_CALENDAR_MIN_WIDTH = 640;
+const WEEK_CALENDAR_MIN_HEIGHT = 240;
+const WEEK_CALENDAR_MAX_HEIGHT = 520;
+const WEEK_AGENDA_MIN_HEIGHT = 220;
 const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" });
 const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
 const WEEK_TITLE_MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const WEEK_TITLE_FULL_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+function getDefaultMonthAgendaWidth(): number {
+  if (typeof window === "undefined") {
+    return 260;
+  }
+
+  return Math.round(Math.min(MONTH_AGENDA_MAX_WIDTH, Math.max(MONTH_AGENDA_MIN_WIDTH, window.innerWidth * 0.16)));
+}
+
+function clampMonthAgendaWidth(width: number, containerWidth: number): number {
+  const maxWidth = Math.max(
+    MONTH_AGENDA_MIN_WIDTH,
+    Math.min(MONTH_AGENDA_MAX_WIDTH, containerWidth - MONTH_CALENDAR_MIN_WIDTH),
+  );
+
+  return Math.min(Math.max(width, MONTH_AGENDA_MIN_WIDTH), maxWidth);
+}
+
+function getDefaultWeekCalendarHeight(): number {
+  if (typeof window === "undefined") {
+    return 340;
+  }
+
+  return Math.round(Math.min(WEEK_CALENDAR_MAX_HEIGHT, Math.max(WEEK_CALENDAR_MIN_HEIGHT, window.innerHeight * 0.38)));
+}
+
+function clampWeekCalendarHeight(height: number, containerHeight: number): number {
+  const maxHeight = Math.max(
+    WEEK_CALENDAR_MIN_HEIGHT,
+    Math.min(WEEK_CALENDAR_MAX_HEIGHT, containerHeight - WEEK_AGENDA_MIN_HEIGHT),
+  );
+
+  return Math.min(Math.max(height, WEEK_CALENDAR_MIN_HEIGHT), maxHeight);
+}
 
 function parseHexColor(rawColor: string | null | undefined): { red: number; green: number; blue: number } | null {
   if (!rawColor) {
@@ -240,6 +280,15 @@ export const CalendarPageView = memo(function CalendarPageView({
   const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
   const [anchorDate, setAnchorDate] = useState<Date>(todayDate);
   const [selectedDateString, setSelectedDateString] = useState(todayString);
+  const [monthAgendaWidth, setMonthAgendaWidth] = useState(getDefaultMonthAgendaWidth);
+  const [weekCalendarHeight, setWeekCalendarHeight] = useState(getDefaultWeekCalendarHeight);
+  const [isResizingMonth, setIsResizingMonth] = useState(false);
+  const [isResizingWeek, setIsResizingWeek] = useState(false);
+  const monthLayoutRef = useRef<HTMLDivElement | null>(null);
+  const weekLayoutRef = useRef<HTMLDivElement | null>(null);
+  const weekCalendarScrollRef = useRef<HTMLDivElement | null>(null);
+  const monthResizeStateRef = useRef<{ startX: number; startWidth: number; containerWidth: number } | null>(null);
+  const weekResizeStateRef = useRef<{ startY: number; startHeight: number; containerHeight: number } | null>(null);
   const listById = useMemo(() => new Map(lists.map((list) => [list.id, list])), [lists]);
   const visibleTasks = useMemo(() => (showCompleted ? tasks : tasks.filter((task) => !task.is_done)), [showCompleted, tasks]);
   const visibleRange = useMemo(
@@ -277,6 +326,108 @@ export const CalendarPageView = memo(function CalendarPageView({
     return formatWeekTitle(visibleRange.start, visibleRange.end);
   }, [anchorDate, viewMode, visibleRange.end, visibleRange.start]);
 
+  useEffect(() => {
+    if (viewMode !== "week") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      weekCalendarScrollRef.current?.scrollTo({ top: 0, left: 0 });
+    });
+  }, [anchorDate, viewMode]);
+
+  const clampSplitLayout = useCallback(() => {
+    if (monthLayoutRef.current) {
+      const nextWidth = clampMonthAgendaWidth(monthAgendaWidth, monthLayoutRef.current.getBoundingClientRect().width);
+      if (nextWidth !== monthAgendaWidth) {
+        setMonthAgendaWidth(nextWidth);
+      }
+    }
+
+    if (weekLayoutRef.current) {
+      const nextHeight = clampWeekCalendarHeight(weekCalendarHeight, weekLayoutRef.current.getBoundingClientRect().height);
+      if (nextHeight !== weekCalendarHeight) {
+        setWeekCalendarHeight(nextHeight);
+      }
+    }
+  }, [monthAgendaWidth, weekCalendarHeight]);
+
+  useEffect(() => {
+    clampSplitLayout();
+    window.addEventListener("resize", clampSplitLayout);
+    return () => window.removeEventListener("resize", clampSplitLayout);
+  }, [clampSplitLayout]);
+
+  useEffect(() => {
+    if (!isResizingMonth || !monthResizeStateRef.current) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!monthResizeStateRef.current) {
+        return;
+      }
+
+      const nextWidth = clampMonthAgendaWidth(
+        monthResizeStateRef.current.startWidth - (event.clientX - monthResizeStateRef.current.startX),
+        monthResizeStateRef.current.containerWidth,
+      );
+      setMonthAgendaWidth(nextWidth);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingMonth(false);
+      monthResizeStateRef.current = null;
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isResizingMonth]);
+
+  useEffect(() => {
+    if (!isResizingWeek || !weekResizeStateRef.current) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!weekResizeStateRef.current) {
+        return;
+      }
+
+      const nextHeight = clampWeekCalendarHeight(
+        weekResizeStateRef.current.startHeight + (event.clientY - weekResizeStateRef.current.startY),
+        weekResizeStateRef.current.containerHeight,
+      );
+      setWeekCalendarHeight(nextHeight);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingWeek(false);
+      weekResizeStateRef.current = null;
+    };
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isResizingWeek]);
+
   const navigatePeriod = useCallback(
     (direction: -1 | 1) => {
       if (viewMode === "month") {
@@ -306,6 +457,237 @@ export const CalendarPageView = memo(function CalendarPageView({
     setAnchorDate(todayDate);
     setSelectedDateString(todayString);
   }, [todayDate, todayString]);
+
+  const handleMonthResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!monthLayoutRef.current) {
+        return;
+      }
+
+      monthResizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: monthAgendaWidth,
+        containerWidth: monthLayoutRef.current.getBoundingClientRect().width,
+      };
+      setIsResizingMonth(true);
+      event.preventDefault();
+    },
+    [monthAgendaWidth],
+  );
+
+  const handleWeekResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!weekLayoutRef.current) {
+        return;
+      }
+
+      weekResizeStateRef.current = {
+        startY: event.clientY,
+        startHeight: weekCalendarHeight,
+        containerHeight: weekLayoutRef.current.getBoundingClientRect().height,
+      };
+      setIsResizingWeek(true);
+      event.preventDefault();
+    },
+    [weekCalendarHeight],
+  );
+
+  const monthLayoutStyle = useMemo(
+    () => ({ "--calendar-agenda-width": `${monthAgendaWidth}px` }) as CSSProperties,
+    [monthAgendaWidth],
+  );
+  const weekLayoutStyle = useMemo(
+    () => ({ "--calendar-week-height": `${weekCalendarHeight}px` }) as CSSProperties,
+    [weekCalendarHeight],
+  );
+
+  const agendaContent = (
+    <>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-lg font-semibold text-foreground">{formatSelectedDayLabel(selectedDateString)}</h2>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {selectedOccurrences.length === 0 ? "No tasks scheduled for this date." : `${selectedOccurrences.length} task${selectedOccurrences.length === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => onCreateTask(selectedDateString)}>
+          <Plus className="h-4 w-4" />
+          Create task
+        </Button>
+      </div>
+
+      {selectedOccurrences.length === 0 ? (
+        <div className="mt-5 rounded-[1.4rem] border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+          The day is clear. Create a task here to prefill {selectedDateString}.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-5">
+          <CalendarAgendaSection title="Active" occurrences={activeOccurrences} listById={listById} onOpenTask={onOpenTask} />
+          {showCompleted ? (
+            <CalendarAgendaSection
+              title="Completed"
+              occurrences={completedOccurrences}
+              listById={listById}
+              onOpenTask={onOpenTask}
+            />
+          ) : null}
+        </div>
+      )}
+    </>
+  );
+
+  const monthCalendarContent = (
+    <div className="min-w-[760px]">
+      <div className="grid grid-cols-7 border-b border-border/70 bg-background/30">
+        {WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7">
+        {visibleDays.map((day) => {
+          const dayOccurrences = occurrencesByDate.get(day.dateString) ?? [];
+          const visibleOccurrences = dayOccurrences.slice(0, MONTH_DAY_OCCURRENCE_LIMIT);
+          const hiddenCount = Math.max(0, dayOccurrences.length - visibleOccurrences.length);
+          const isToday = day.dateString === todayString;
+          const isSelected = day.dateString === selectedDateString;
+
+          return (
+            <div
+              key={day.dateString}
+              role="gridcell"
+              aria-selected={isSelected}
+              className={cn(
+                "min-h-[154px] border-b border-r border-border/70 p-3 transition-colors",
+                isSelected ? "bg-primary/8" : "bg-transparent hover:bg-background/40",
+              )}
+              onClick={() => handleSelectDate(day.date, day.dateString)}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-semibold",
+                    isSelected
+                      ? "bg-primary text-primary-foreground"
+                      : isToday
+                        ? "bg-primary/15 text-primary"
+                        : day.isCurrentMonth
+                          ? "text-foreground"
+                          : "text-muted-foreground/70",
+                  )}
+                >
+                  {day.date.getDate()}
+                </span>
+                {isToday ? <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-primary">Today</span> : null}
+              </div>
+
+              <div className="space-y-2">
+                {visibleOccurrences.map((occurrence) => (
+                  <CalendarTaskChip
+                    key={`${occurrence.task.id}:${occurrence.dateString}`}
+                    occurrence={occurrence}
+                    listById={listById}
+                    onOpenTask={onOpenTask}
+                  />
+                ))}
+
+                {hiddenCount > 0 ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleSelectDate(day.date, day.dateString);
+                    }}
+                  >
+                    +{hiddenCount} more
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const weekCalendarContent = (
+    <div className="min-w-[760px]">
+      <div className="grid grid-cols-7 border-b border-border/70 bg-background/30">
+        {WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7">
+        {visibleDays.map((day) => {
+          const isToday = day.dateString === todayString;
+          const isSelected = day.dateString === selectedDateString;
+          const dayOccurrences = occurrencesByDate.get(day.dateString) ?? [];
+
+          return (
+            <div
+              key={day.dateString}
+              className={cn(
+                "min-h-[280px] border-r border-border/70 p-3 last:border-r-0",
+                isSelected ? "bg-primary/8" : "bg-transparent",
+              )}
+            >
+              <button
+                type="button"
+                className="mb-4 flex w-full items-center justify-between gap-3 rounded-[1rem] bg-background/40 px-3 py-2 text-left transition-colors hover:bg-background/60"
+                onClick={() => handleSelectDate(day.date, day.dateString)}
+              >
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {WEEKDAY_LABELS[(day.date.getDay() + 6) % 7]}
+                  </div>
+                  <div className={cn("mt-1 text-lg font-semibold", day.isCurrentMonth ? "text-foreground" : "text-muted-foreground")}>
+                    {day.date.getDate()}
+                  </div>
+                </div>
+                {isToday ? (
+                  <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-primary">Today</span>
+                ) : isSelected ? (
+                  <span className="rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">Selected</span>
+                ) : null}
+              </button>
+
+              <div className="space-y-2">
+                {dayOccurrences.length === 0 ? (
+                  <div className="rounded-[1rem] border border-dashed border-border/70 px-3 py-4 text-center text-sm text-muted-foreground">
+                    No tasks
+                  </div>
+                ) : (
+                  dayOccurrences.map((occurrence) => (
+                    <CalendarTaskChip
+                      key={`${occurrence.task.id}:${occurrence.dateString}`}
+                      occurrence={occurrence}
+                      listById={listById}
+                      onOpenTask={onOpenTask}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-0 flex-col gap-4 lg:h-full">
@@ -366,178 +748,62 @@ export const CalendarPageView = memo(function CalendarPageView({
       </section>
 
       <section className="flex min-h-0 flex-1 flex-col gap-4 lg:overflow-hidden">
-        <div className="min-h-0 overflow-auto rounded-[2rem] border border-border/70 bg-card/80 shadow-panel backdrop-blur-xl">
-          <div className={cn("min-w-[760px]", viewMode === "month" ? "" : "pb-4")}>
-            <div className="grid grid-cols-7 border-b border-border/70 bg-background/30">
-              {WEEKDAY_LABELS.map((label) => (
-                <div
-                  key={label}
-                  className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground"
-                >
-                  {label}
-                </div>
-              ))}
+        {viewMode === "month" ? (
+          <div
+            ref={monthLayoutRef}
+            style={monthLayoutStyle}
+            className="flex min-h-0 flex-col gap-4 lg:flex-row lg:gap-0"
+          >
+            <div className="min-h-0 overflow-auto rounded-[2rem] border border-border/70 bg-card/80 shadow-panel backdrop-blur-xl lg:min-w-0 lg:flex-1">
+              {monthCalendarContent}
             </div>
 
-            {viewMode === "month" ? (
-              <div className="grid grid-cols-7">
-                {visibleDays.map((day) => {
-                  const dayOccurrences = occurrencesByDate.get(day.dateString) ?? [];
-                  const visibleOccurrences = dayOccurrences.slice(0, MONTH_DAY_OCCURRENCE_LIMIT);
-                  const hiddenCount = Math.max(0, dayOccurrences.length - visibleOccurrences.length);
-                  const isToday = day.dateString === todayString;
-                  const isSelected = day.dateString === selectedDateString;
+            <button
+              type="button"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize month calendar panels"
+              data-testid="calendar-month-split-handle"
+              className="group hidden w-4 shrink-0 cursor-col-resize items-center justify-center self-stretch lg:flex"
+              onPointerDown={handleMonthResizeStart}
+            >
+              <span className="h-24 w-1 rounded-full bg-border/80 transition-colors group-hover:bg-primary/45 group-active:bg-primary/65" />
+            </button>
 
-                  return (
-                    <div
-                      key={day.dateString}
-                      role="gridcell"
-                      aria-selected={isSelected}
-                      className={cn(
-                        "min-h-[154px] border-b border-r border-border/70 p-3 transition-colors",
-                        isSelected ? "bg-primary/8" : "bg-transparent hover:bg-background/40",
-                      )}
-                      onClick={() => handleSelectDate(day.date, day.dateString)}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <span
-                          className={cn(
-                            "inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-sm font-semibold",
-                            isSelected
-                              ? "bg-primary text-primary-foreground"
-                              : isToday
-                                ? "bg-primary/15 text-primary"
-                                : day.isCurrentMonth
-                                  ? "text-foreground"
-                                  : "text-muted-foreground/70",
-                          )}
-                        >
-                          {day.date.getDate()}
-                        </span>
-                        {isToday ? <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-primary">Today</span> : null}
-                      </div>
-
-                      <div className="space-y-2">
-                        {visibleOccurrences.map((occurrence) => (
-                          <CalendarTaskChip
-                            key={`${occurrence.task.id}:${occurrence.dateString}`}
-                            occurrence={occurrence}
-                            listById={listById}
-                            onOpenTask={onOpenTask}
-                          />
-                        ))}
-
-                        {hiddenCount > 0 ? (
-                          <button
-                            type="button"
-                            className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleSelectDate(day.date, day.dateString);
-                            }}
-                          >
-                            +{hiddenCount} more
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="grid grid-cols-7">
-                {visibleDays.map((day) => {
-                  const isToday = day.dateString === todayString;
-                  const isSelected = day.dateString === selectedDateString;
-                  const dayOccurrences = occurrencesByDate.get(day.dateString) ?? [];
-
-                  return (
-                    <div
-                      key={day.dateString}
-                      className={cn(
-                        "min-h-[420px] border-r border-border/70 p-3 last:border-r-0",
-                        isSelected ? "bg-primary/8" : "bg-transparent",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="mb-4 flex w-full items-center justify-between gap-3 rounded-[1rem] bg-background/40 px-3 py-2 text-left transition-colors hover:bg-background/60"
-                        onClick={() => handleSelectDate(day.date, day.dateString)}
-                      >
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                            {WEEKDAY_LABELS[(day.date.getDay() + 6) % 7]}
-                          </div>
-                          <div className={cn("mt-1 text-lg font-semibold", day.isCurrentMonth ? "text-foreground" : "text-muted-foreground")}>
-                            {day.date.getDate()}
-                          </div>
-                        </div>
-                        {isToday ? (
-                          <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-primary">Today</span>
-                        ) : isSelected ? (
-                          <span className="rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">Selected</span>
-                        ) : null}
-                      </button>
-
-                      <div className="space-y-2">
-                        {dayOccurrences.length === 0 ? (
-                          <div className="rounded-[1rem] border border-dashed border-border/70 px-3 py-4 text-center text-sm text-muted-foreground">
-                            No tasks
-                          </div>
-                        ) : (
-                          dayOccurrences.map((occurrence) => (
-                            <CalendarTaskChip
-                              key={`${occurrence.task.id}:${occurrence.dateString}`}
-                              occurrence={occurrence}
-                              listById={listById}
-                              onOpenTask={onOpenTask}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <section className="rounded-[2rem] border border-border/70 bg-card/80 p-5 shadow-panel backdrop-blur-xl lg:min-h-0 lg:w-[var(--calendar-agenda-width)] lg:flex-none lg:overflow-auto">
+              {agendaContent}
+            </section>
           </div>
-        </div>
-
-        <section className="rounded-[2rem] border border-border/70 bg-card/80 p-5 shadow-panel backdrop-blur-xl">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-lg font-semibold text-foreground">{formatSelectedDayLabel(selectedDateString)}</h2>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {selectedOccurrences.length === 0 ? "No tasks scheduled for this date." : `${selectedOccurrences.length} task${selectedOccurrences.length === 1 ? "" : "s"}`}
-              </p>
+        ) : (
+          <div
+            ref={weekLayoutRef}
+            style={weekLayoutStyle}
+            className="flex min-h-0 flex-col gap-4 lg:gap-0"
+          >
+            <div
+              ref={weekCalendarScrollRef}
+              className="min-h-0 overflow-auto rounded-[2rem] border border-border/70 bg-card/80 shadow-panel backdrop-blur-xl lg:h-[var(--calendar-week-height)] lg:flex-none"
+            >
+              {weekCalendarContent}
             </div>
-            <Button variant="outline" onClick={() => onCreateTask(selectedDateString)}>
-              <Plus className="h-4 w-4" />
-              Create task
-            </Button>
+
+            <button
+              type="button"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize week calendar panels"
+              data-testid="calendar-week-split-handle"
+              className="group hidden h-4 w-full shrink-0 cursor-row-resize items-center justify-center lg:flex"
+              onPointerDown={handleWeekResizeStart}
+            >
+              <span className="h-1 w-24 rounded-full bg-border/80 transition-colors group-hover:bg-primary/45 group-active:bg-primary/65" />
+            </button>
+
+            <section className="rounded-[2rem] border border-border/70 bg-card/80 p-5 shadow-panel backdrop-blur-xl lg:min-h-0 lg:flex-1 lg:overflow-auto">
+              {agendaContent}
+            </section>
           </div>
-
-          {selectedOccurrences.length === 0 ? (
-            <div className="mt-5 rounded-[1.4rem] border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-              The day is clear. Create a task here to prefill {selectedDateString}.
-            </div>
-          ) : (
-            <div className="mt-5 space-y-5">
-              <CalendarAgendaSection title="Active" occurrences={activeOccurrences} listById={listById} onOpenTask={onOpenTask} />
-              {showCompleted ? (
-                <CalendarAgendaSection
-                  title="Completed"
-                  occurrences={completedOccurrences}
-                  listById={listById}
-                  onOpenTask={onOpenTask}
-                />
-              ) : null}
-            </div>
-          )}
-        </section>
+        )}
       </section>
     </div>
   );

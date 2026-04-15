@@ -53,11 +53,13 @@ describe("CalendarPageView", () => {
 
     expect(screen.getByRole("button", { name: "Month" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
+    expect(screen.getByTestId("calendar-month-split-handle")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
 
     expect(screen.getByRole("button", { name: "Week" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryAllByRole("gridcell")).toHaveLength(0);
     expect(screen.getByText("Mar 16 - 22, 2026")).not.toBeNull();
+    expect(screen.getByTestId("calendar-week-split-handle")).not.toBeNull();
   });
 });

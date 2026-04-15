@@ -26,8 +26,12 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.domain.insertOrderedIdRelative
@@ -124,47 +128,63 @@ fun TaskSectionCard(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            val collapseDescription = if (collapsed) {
+                "Expand $title group"
+            } else {
+                "Collapse $title group"
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
+                Row(
                     modifier = Modifier
+                        .weight(1f)
                         .testTag("section-tag-${sectionId.wire}")
-                        .clickable(onClick = onToggleCollapsed),
-                    shape = RoundedCornerShape(999.dp),
-                    color = sectionPriorityColor(sectionId).copy(alpha = 0.12f),
+                        .clip(RoundedCornerShape(20.dp))
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = collapseDescription
+                        }
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = collapseDescription,
+                            onClick = onToggleCollapsed,
+                        )
+                        .padding(vertical = 4.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = sectionPriorityColor(sectionId).copy(alpha = 0.12f),
                     ) {
-                        when (sectionId) {
-                            TaskSectionId.PINNED -> Icon(
-                                imageVector = Icons.Outlined.PushPin,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
-                            )
-                            else -> androidx.compose.foundation.layout.Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(sectionPriorityColor(sectionId), CircleShape),
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            when (sectionId) {
+                                TaskSectionId.PINNED -> Icon(
+                                    imageVector = Icons.Outlined.PushPin,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                )
+                                else -> androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(sectionPriorityColor(sectionId), CircleShape),
+                                )
+                            }
+                            Text(
+                                text = title.uppercase(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = sectionPriorityColor(sectionId),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 8.dp),
                             )
                         }
-                        Text(
-                            text = title.uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = sectionPriorityColor(sectionId),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
                     }
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    modifier = Modifier.testTag("section-collapse-${sectionId.wire}"),
-                    onClick = onToggleCollapsed,
-                ) {
+                    Spacer(modifier = Modifier.weight(1f))
                     Icon(
+                        modifier = Modifier.testTag("section-collapse-${sectionId.wire}"),
                         imageVector = if (collapsed) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowUp,
-                        contentDescription = if (collapsed) "Expand" else "Collapse",
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(

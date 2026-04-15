@@ -1,9 +1,13 @@
 package com.taskmanager.android.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -33,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -59,9 +64,15 @@ fun SubtaskDraftList(
     val itemBounds = remember { mutableStateMapOf<Long, Rect>() }
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var draggingOffsetY by remember { mutableFloatStateOf(0f) }
+    var dropTargetIndex by remember { mutableStateOf<Int?>(null) }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.forEach { item ->
+    Column(modifier = modifier) {
+        items.forEachIndexed { index, item ->
+            SubtaskListGap(
+                positionIndex = index,
+                dropTargetIndex = dropTargetIndex,
+                showDefaultGap = index > 0,
+            )
             key(item.id) {
                 val isDragging = draggingId == item.id
                 Surface(
@@ -109,21 +120,28 @@ fun SubtaskDraftList(
                                         onDragStart = {
                                             draggingId = item.id
                                             draggingOffsetY = 0f
+                                            dropTargetIndex = resolveDropTargetIndex(
+                                                items = items,
+                                                itemBounds = itemBounds,
+                                                draggingId = item.id,
+                                                draggingOffsetY = 0f,
+                                            )
                                         },
                                         onDragEnd = {
                                             commitDragReorder(
                                                 items = items,
-                                                itemBounds = itemBounds,
                                                 draggingId = draggingId,
-                                                draggingOffsetY = draggingOffsetY,
+                                                dropTargetIndex = dropTargetIndex,
                                                 onReorder = onReorder,
                                             )
                                             draggingId = null
                                             draggingOffsetY = 0f
+                                            dropTargetIndex = null
                                         },
                                         onDragCancel = {
                                             draggingId = null
                                             draggingOffsetY = 0f
+                                            dropTargetIndex = null
                                         },
                                         onDrag = { change, dragAmount ->
                                             if (draggingId != item.id) {
@@ -131,6 +149,12 @@ fun SubtaskDraftList(
                                             }
                                             change.consume()
                                             draggingOffsetY += dragAmount.y
+                                            dropTargetIndex = resolveDropTargetIndex(
+                                                items = items,
+                                                itemBounds = itemBounds,
+                                                draggingId = draggingId,
+                                                draggingOffsetY = draggingOffsetY,
+                                            )
                                         },
                                     )
                                 },
@@ -146,6 +170,11 @@ fun SubtaskDraftList(
             }
         }
 
+        SubtaskListGap(
+            positionIndex = items.size,
+            dropTargetIndex = dropTargetIndex,
+            showDefaultGap = items.isNotEmpty(),
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -170,43 +199,77 @@ fun SubtaskDraftList(
     }
 }
 
+@Composable
+private fun SubtaskListGap(
+    positionIndex: Int,
+    dropTargetIndex: Int?,
+    showDefaultGap: Boolean,
+) {
+    if (dropTargetIndex == positionIndex) {
+        if (positionIndex > 0) {
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        SubtaskDropIndicator()
+        Spacer(modifier = Modifier.height(6.dp))
+    } else if (showDefaultGap) {
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun SubtaskDropIndicator() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 56.dp)
+            .height(4.dp)
+            .background(
+                color = Color(0xFFE0B43B),
+                shape = MaterialTheme.shapes.extraLarge,
+            ),
+    )
+}
+
 private fun commitDragReorder(
     items: List<EditableSubtaskItem>,
-    itemBounds: SnapshotStateMap<Long, Rect>,
     draggingId: Long?,
-    draggingOffsetY: Float,
+    dropTargetIndex: Int?,
     onReorder: (List<Long>) -> Unit,
 ) {
     val activeId = draggingId ?: return
     val orderedIds = items.map(EditableSubtaskItem::id)
     val fromIndex = orderedIds.indexOf(activeId)
-    val activeBounds = itemBounds[activeId] ?: return
     if (fromIndex == -1) {
         return
     }
 
-    val draggedCenterY = activeBounds.center.y + draggingOffsetY
-    val targetIndex = resolveDropIndex(orderedIds, itemBounds, draggedCenterY)
-    if (targetIndex == -1 || targetIndex == fromIndex) {
+    val targetIndex = dropTargetIndex ?: return
+    val adjustedTargetIndex = if (targetIndex > fromIndex) targetIndex - 1 else targetIndex
+    if (adjustedTargetIndex == fromIndex) {
         return
     }
 
     val reorderedIds = orderedIds.toMutableList().apply {
-        add(targetIndex, removeAt(fromIndex))
+        add(adjustedTargetIndex.coerceIn(0, size - 1), removeAt(fromIndex))
     }
     if (reorderedIds != orderedIds) {
         onReorder(reorderedIds)
     }
 }
 
-private fun resolveDropIndex(
-    orderedIds: List<Long>,
+private fun resolveDropTargetIndex(
+    items: List<EditableSubtaskItem>,
     itemBounds: SnapshotStateMap<Long, Rect>,
-    draggedCenterY: Float,
-): Int {
+    draggingId: Long?,
+    draggingOffsetY: Float,
+): Int? {
+    val activeId = draggingId ?: return null
+    val orderedIds = items.map(EditableSubtaskItem::id)
+    val activeBounds = itemBounds[activeId] ?: return null
+    val draggedCenterY = activeBounds.center.y + draggingOffsetY
     val boundsByOrder = orderedIds.mapNotNull { id -> itemBounds[id]?.let { bounds -> id to bounds } }
     if (boundsByOrder.isEmpty()) {
-        return -1
+        return null
     }
 
     boundsByOrder.forEachIndexed { index, (_, bounds) ->
@@ -215,5 +278,5 @@ private fun resolveDropIndex(
         }
     }
 
-    return boundsByOrder.lastIndex
+    return boundsByOrder.size
 }

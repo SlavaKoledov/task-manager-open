@@ -57,13 +57,16 @@ import com.taskmanager.android.domain.buildTaskCreatePayloadFromDraft
 import com.taskmanager.android.domain.buildTaskDraft
 import com.taskmanager.android.domain.buildTaskUpdatePayloadJson
 import com.taskmanager.android.domain.ensureCustomRepeatConfig
+import com.taskmanager.android.domain.formatTaskTimeRange
 import com.taskmanager.android.domain.getSubtaskProgressSummary
 import com.taskmanager.android.domain.getTaskRepeatSummary
 import com.taskmanager.android.domain.normalizeCustomRepeatConfig
+import com.taskmanager.android.domain.normalizeTaskTime
 import com.taskmanager.android.domain.switchCustomRepeatUnit
 import com.taskmanager.android.domain.updateDraftDate
 import com.taskmanager.android.domain.updateDraftRepeat
 import com.taskmanager.android.domain.validateTaskDraft
+import com.taskmanager.android.domain.validateTaskTimeRange
 import com.taskmanager.android.model.EditableSubtaskDraft
 import com.taskmanager.android.model.ListItem
 import com.taskmanager.android.model.TaskCustomRepeatConfig
@@ -111,6 +114,8 @@ fun TaskEditorScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showDueDatePicker by remember { mutableStateOf(false) }
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
     var showReminderTimePicker by remember { mutableStateOf(false) }
     var showRepeatUntilPicker by remember { mutableStateOf(false) }
     var initializedKey by remember { mutableStateOf<String?>(null) }
@@ -127,6 +132,7 @@ fun TaskEditorScreen(
         } else {
             null
         }
+    val taskTimeError = validateTaskTimeRange(draft.dueDate, draft.startTime, draft.endTime)
 
     val initializationKey = task?.id?.toString() ?: "create:${editorContext.viewTarget.mode}:${editorContext.groupId?.wire}:${editorContext.sectionId?.wire}"
     LaunchedEffect(initializationKey) {
@@ -169,6 +175,56 @@ fun TaskEditorScreen(
                 true,
             )
             dialog.setOnDismissListener { showReminderTimePicker = false }
+            dialog.show()
+            onDispose { dialog.dismiss() }
+        }
+    }
+
+    if (showStartTimePicker) {
+        val (hour, minute) = draft.startTime
+            .takeIf { it.isNotBlank() }
+            ?.split(":")
+            ?.let { parts -> (parts.getOrNull(0)?.toIntOrNull() ?: 9) to (parts.getOrNull(1)?.toIntOrNull() ?: 0) }
+            ?: (9 to 0)
+        DisposableEffect(showStartTimePicker) {
+            val dialog = TimePickerDialog(
+                context,
+                { _, selectedHour, selectedMinute ->
+                    draft = draft.copy(startTime = "%02d:%02d".format(selectedHour, selectedMinute))
+                    showStartTimePicker = false
+                },
+                hour,
+                minute,
+                true,
+            )
+            dialog.setOnDismissListener { showStartTimePicker = false }
+            dialog.show()
+            onDispose { dialog.dismiss() }
+        }
+    }
+
+    if (showEndTimePicker) {
+        val (hour, minute) = draft.endTime
+            .takeIf { it.isNotBlank() }
+            ?.split(":")
+            ?.let { parts -> (parts.getOrNull(0)?.toIntOrNull() ?: 17) to (parts.getOrNull(1)?.toIntOrNull() ?: 0) }
+            ?: draft.startTime
+                .takeIf { it.isNotBlank() }
+                ?.split(":")
+                ?.let { parts -> (parts.getOrNull(0)?.toIntOrNull() ?: 17) to (parts.getOrNull(1)?.toIntOrNull() ?: 0) }
+            ?: (17 to 0)
+        DisposableEffect(showEndTimePicker) {
+            val dialog = TimePickerDialog(
+                context,
+                { _, selectedHour, selectedMinute ->
+                    draft = draft.copy(endTime = "%02d:%02d".format(selectedHour, selectedMinute))
+                    showEndTimePicker = false
+                },
+                hour,
+                minute,
+                true,
+            )
+            dialog.setOnDismissListener { showEndTimePicker = false }
             dialog.show()
             onDispose { dialog.dismiss() }
         }
@@ -301,6 +357,33 @@ fun TaskEditorScreen(
                     )
                     if (draft.dueDate.isNotBlank()) {
                         FilterChip(
+                            selected = draft.startTime.isNotBlank(),
+                            onClick = { showStartTimePicker = true },
+                            label = {
+                                Text(
+                                    if (draft.startTime.isBlank()) {
+                                        "Start time"
+                                    } else {
+                                        "Starts ${draft.startTime}"
+                                    },
+                                )
+                            },
+                        )
+                        FilterChip(
+                            selected = draft.endTime.isNotBlank(),
+                            onClick = { showEndTimePicker = true },
+                            enabled = draft.startTime.isNotBlank(),
+                            label = {
+                                Text(
+                                    if (draft.endTime.isBlank()) {
+                                        "End time"
+                                    } else {
+                                        "Ends ${draft.endTime}"
+                                    },
+                                )
+                            },
+                        )
+                        FilterChip(
                             selected = draft.reminderTime.isNotBlank(),
                             onClick = { showReminderTimePicker = true },
                             label = {
@@ -312,6 +395,20 @@ fun TaskEditorScreen(
                                     },
                                 )
                             },
+                        )
+                    }
+                    if (draft.startTime.isNotBlank()) {
+                        FilterChip(
+                            selected = false,
+                            onClick = { draft = draft.copy(startTime = "", endTime = "") },
+                            label = { Text("Clear time") },
+                        )
+                    }
+                    if (draft.endTime.isNotBlank()) {
+                        FilterChip(
+                            selected = false,
+                            onClick = { draft = draft.copy(endTime = "") },
+                            label = { Text("Clear end time") },
                         )
                     }
                     if (draft.reminderTime.isNotBlank()) {
@@ -328,6 +425,20 @@ fun TaskEditorScreen(
                             label = { Text("Clear date") },
                         )
                     }
+                }
+                if (draft.startTime.isNotBlank()) {
+                    Text(
+                        text = formatTaskTimeRange(draft.startTime, draft.endTime) ?: normalizeTaskTime(draft.startTime).orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (taskTimeError != null) {
+                    Text(
+                        text = taskTimeError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
 

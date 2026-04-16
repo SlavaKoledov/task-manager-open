@@ -35,6 +35,8 @@ data class CachedTaskEntity(
     val description: String?,
     @ColumnInfo(name = "description_blocks_json") val descriptionBlocksJson: String,
     @ColumnInfo(name = "due_date") val dueDate: String?,
+    @ColumnInfo(name = "start_time") val startTime: String?,
+    @ColumnInfo(name = "end_time") val endTime: String?,
     @ColumnInfo(name = "reminder_time") val reminderTime: String?,
     @ColumnInfo(name = "repeat_config_json") val repeatConfigJson: String?,
     @ColumnInfo(name = "repeat_until") val repeatUntil: String?,

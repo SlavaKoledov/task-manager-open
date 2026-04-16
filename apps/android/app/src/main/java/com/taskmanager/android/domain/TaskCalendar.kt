@@ -243,19 +243,14 @@ fun compareCalendarOccurrences(left: CalendarTaskOccurrence, right: CalendarTask
         return if (left.task.isDone) 1 else -1
     }
 
-    val leftReminder = left.task.reminderTime.orEmpty()
-    val rightReminder = right.task.reminderTime.orEmpty()
-
-    if (leftReminder.isNotBlank() && rightReminder.isBlank()) {
-        return -1
-    }
-
-    if (leftReminder.isBlank() && rightReminder.isNotBlank()) {
-        return 1
-    }
-
-    if (leftReminder != rightReminder) {
-        return leftReminder.compareTo(rightReminder)
+    val timeDelta = compareTaskStartTimes(
+        left.task.startTime,
+        right.task.startTime,
+        left.task.endTime,
+        right.task.endTime,
+    )
+    if (timeDelta != 0) {
+        return timeDelta
     }
 
     val titleDelta = left.task.title.compareTo(right.task.title)

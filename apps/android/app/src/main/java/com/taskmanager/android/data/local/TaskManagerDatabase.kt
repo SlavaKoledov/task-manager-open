@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PendingSyncOperationEntity::class,
         SyncStateEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class TaskManagerDatabase : RoomDatabase() {
@@ -34,6 +34,13 @@ abstract class TaskManagerDatabase : RoomDatabase() {
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE cached_tasks ADD COLUMN repeat_config_json TEXT")
+            }
+        }
+
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_tasks ADD COLUMN start_time TEXT")
+                db.execSQL("ALTER TABLE cached_tasks ADD COLUMN end_time TEXT")
             }
         }
     }

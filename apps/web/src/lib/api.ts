@@ -72,6 +72,8 @@ function normalizeSubtask(task: ApiTask): TaskSubtask {
     description: task.description,
     description_blocks: ensureDescriptionBlocks(task.description_blocks, task.description),
     due_date: task.due_date,
+    start_time: task.start_time ?? null,
+    end_time: task.end_time ?? null,
     reminder_time: task.reminder_time ?? null,
     repeat_config: task.repeat_config ?? null,
     repeat_until: task.repeat_until,

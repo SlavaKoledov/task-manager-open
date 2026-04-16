@@ -177,6 +177,8 @@ class TaskManagerRepository @Inject constructor(
             description = payload.description,
             descriptionBlocks = payload.descriptionBlocks,
             dueDate = payload.dueDate,
+            startTime = payload.startTime,
+            endTime = payload.endTime,
             reminderTime = payload.reminderTime,
             repeatConfig = payload.repeatConfig?.toDomain(),
             repeatUntil = payload.repeatUntil,
@@ -193,6 +195,8 @@ class TaskManagerRepository @Inject constructor(
                     description = subtask.description,
                     descriptionBlocks = subtask.descriptionBlocks,
                     dueDate = subtask.dueDate,
+                    startTime = subtask.startTime,
+                    endTime = subtask.endTime,
                     reminderTime = subtask.reminderTime,
                     isDone = subtask.isDone,
                 )
@@ -931,6 +935,8 @@ class TaskManagerRepository @Inject constructor(
                 description = payload.description,
                 descriptionBlocks = payload.descriptionBlocks,
                 dueDate = payload.dueDate,
+                startTime = payload.startTime,
+                endTime = payload.endTime,
                 reminderTime = payload.reminderTime,
                 isDone = payload.isDone,
             ),
@@ -944,6 +950,8 @@ class TaskManagerRepository @Inject constructor(
             description = payload.description,
             descriptionBlocksJson = localCacheMapper.encodeDescriptionBlocks(payload.descriptionBlocks),
             dueDate = payload.dueDate,
+            startTime = payload.startTime,
+            endTime = payload.endTime,
             reminderTime = payload.reminderTime,
             repeatConfigJson = null,
             repeatUntil = null,
@@ -1229,6 +1237,8 @@ class TaskManagerRepository @Inject constructor(
         description = payload.description,
         descriptionBlocks = payload.descriptionBlocks.map { it.toDomain() },
         dueDate = payload.dueDate,
+        startTime = payload.startTime,
+        endTime = payload.endTime,
         reminderTime = payload.reminderTime,
         repeatConfig = payload.repeatConfig?.toDomain(),
         repeatUntil = payload.repeatUntil,
@@ -1248,6 +1258,8 @@ class TaskManagerRepository @Inject constructor(
                 description = subtask.description,
                 descriptionBlocks = subtask.descriptionBlocks.map { it.toDomain() },
                 dueDate = subtask.dueDate,
+                startTime = subtask.startTime,
+                endTime = subtask.endTime,
                 reminderTime = subtask.reminderTime,
                 repeatConfig = null,
                 repeatUntil = null,
@@ -1296,6 +1308,20 @@ class TaskManagerRepository @Inject constructor(
 
         val nextDueDate = if (patch.hasDueDate) patch.dueDate else originalEntity.dueDate
         val originalRepeatConfig = localCacheMapper.decodeRepeatConfig(originalEntity.repeatConfigJson)
+        val nextStartTime = if (nextDueDate == null) {
+            null
+        } else if (patch.hasStartTime) {
+            patch.startTime
+        } else {
+            originalEntity.startTime
+        }
+        val nextEndTime = if (nextDueDate == null || nextStartTime == null) {
+            null
+        } else if (patch.hasEndTime) {
+            patch.endTime
+        } else {
+            originalEntity.endTime
+        }
         val nextReminderTime = if (nextDueDate == null) {
             null
         } else if (patch.hasReminderTime) {
@@ -1340,6 +1366,8 @@ class TaskManagerRepository @Inject constructor(
                 originalEntity.descriptionBlocksJson
             },
             dueDate = nextDueDate,
+            startTime = nextStartTime,
+            endTime = nextEndTime,
             reminderTime = nextReminderTime,
             repeatConfigJson = localCacheMapper.encodeRepeatConfig(nextRepeatConfig),
             repeatUntil = nextRepeatUntil,
@@ -1386,6 +1414,8 @@ class TaskManagerRepository @Inject constructor(
                 description = updatedEntity.description,
                 descriptionBlocks = localCacheMapper.decodeDescriptionBlocks(updatedEntity.descriptionBlocksJson),
                 dueDate = updatedEntity.dueDate,
+                startTime = updatedEntity.startTime,
+                endTime = updatedEntity.endTime,
                 reminderTime = updatedEntity.reminderTime,
                 repeatConfig = localCacheMapper.decodeRepeatConfig(updatedEntity.repeatConfigJson),
                 repeatUntil = updatedEntity.repeatUntil,
@@ -1404,6 +1434,8 @@ class TaskManagerRepository @Inject constructor(
                             description = updatedEntity.description,
                             descriptionBlocks = localCacheMapper.decodeDescriptionBlocks(updatedEntity.descriptionBlocksJson),
                             dueDate = updatedEntity.dueDate,
+                            startTime = updatedEntity.startTime,
+                            endTime = updatedEntity.endTime,
                             reminderTime = updatedEntity.reminderTime,
                             isDone = updatedEntity.isDone,
                         )
@@ -1616,6 +1648,10 @@ class TaskManagerRepository @Inject constructor(
         hasDescriptionBlocks = patch.hasDescriptionBlocks,
         dueDate = if (patch.hasDueDate) entity.dueDate else null,
         hasDueDate = patch.hasDueDate,
+        startTime = if (patch.hasStartTime) entity.startTime else null,
+        hasStartTime = patch.hasStartTime,
+        endTime = if (patch.hasEndTime) entity.endTime else null,
+        hasEndTime = patch.hasEndTime,
         reminderTime = if (patch.hasReminderTime) entity.reminderTime else null,
         hasReminderTime = patch.hasReminderTime,
         repeatConfig = if (patch.hasRepeatConfig) localCacheMapper.decodeRepeatConfig(entity.repeatConfigJson) else null,
@@ -1725,6 +1761,8 @@ class TaskManagerRepository @Inject constructor(
                     entity.descriptionBlocksJson
                 },
                 dueDate = if (override.hasDueDate) override.dueDate else entity.dueDate,
+                startTime = if (override.hasStartTime) override.startTime else entity.startTime,
+                endTime = if (override.hasEndTime) override.endTime else entity.endTime,
                 reminderTime = if (override.hasReminderTime) override.reminderTime else entity.reminderTime,
                 repeatConfigJson = if (override.hasRepeatConfig) {
                     localCacheMapper.encodeRepeatConfig(override.repeatConfig)
@@ -1835,6 +1873,10 @@ class TaskManagerRepository @Inject constructor(
         hasDescriptionBlocks = "description_blocks" in payload,
         dueDate = payload["due_date"]?.jsonPrimitive?.contentOrNull,
         hasDueDate = "due_date" in payload,
+        startTime = payload["start_time"]?.jsonPrimitive?.contentOrNull,
+        hasStartTime = "start_time" in payload,
+        endTime = payload["end_time"]?.jsonPrimitive?.contentOrNull,
+        hasEndTime = "end_time" in payload,
         reminderTime = payload["reminder_time"]?.jsonPrimitive?.contentOrNull,
         hasReminderTime = "reminder_time" in payload,
         repeatConfig = payload["repeat_config"]?.takeUnless { it is JsonNull }?.let { element ->
@@ -1899,6 +1941,10 @@ class TaskManagerRepository @Inject constructor(
         val hasDescriptionBlocks: Boolean = false,
         val dueDate: String? = null,
         val hasDueDate: Boolean = false,
+        val startTime: String? = null,
+        val hasStartTime: Boolean = false,
+        val endTime: String? = null,
+        val hasEndTime: Boolean = false,
         val reminderTime: String? = null,
         val hasReminderTime: Boolean = false,
         val repeatConfig: TaskCustomRepeatConfig? = null,

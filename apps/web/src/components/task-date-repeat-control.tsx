@@ -30,16 +30,21 @@ import {
   WEEKDAY_LETTERS,
   WEEKDAY_NAMES,
 } from "@/lib/task-repeat";
+import { validateTaskTimeRange } from "@/lib/task-time";
 import type { TaskCustomRepeatConfig, TaskCustomRepeatUnit, TaskRepeat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type TaskDateRepeatControlProps = {
   value: string;
+  startTime: string;
+  endTime: string;
   reminderTime: string;
   repeat: TaskRepeat;
   repeatConfig: TaskCustomRepeatConfig | null;
   repeatUntil: string;
   onDateChange: (nextDate: string) => void;
+  onStartTimeChange: (nextTime: string) => void;
+  onEndTimeChange: (nextTime: string) => void;
   onReminderTimeChange: (nextTime: string) => void;
   onRepeatChange: (nextRepeat: TaskRepeat) => void;
   onRepeatConfigChange: (nextRepeatConfig: TaskCustomRepeatConfig | null) => void;
@@ -190,11 +195,15 @@ function getSelectedYearlyDateString(repeatConfig: TaskCustomRepeatConfig | null
 
 function TaskDateRepeatControlInner({
   value,
+  startTime,
+  endTime,
   reminderTime,
   repeat,
   repeatConfig,
   repeatUntil,
   onDateChange,
+  onStartTimeChange,
+  onEndTimeChange,
   onReminderTimeChange,
   onRepeatChange,
   onRepeatConfigChange,
@@ -240,6 +249,7 @@ function TaskDateRepeatControlInner({
     repeatUntil && selectedRepeatUntilDate ? selectedDateFormatter.format(selectedRepeatUntilDate) : "No end date";
   const repeatUntilEnabled = repeat !== "none" && Boolean(value);
   const repeatSummary = getTaskRepeatSummary(repeat, repeatConfig);
+  const taskTimeError = validateTaskTimeRange(value, startTime, endTime);
 
   useEffect(() => {
     if (customPanelOpen && isEditingCustomInterval) {
@@ -301,13 +311,15 @@ function TaskDateRepeatControlInner({
 
   const handleClearDate = useCallback(() => {
     onDateChange("");
+    onStartTimeChange("");
+    onEndTimeChange("");
     onReminderTimeChange("");
     onRepeatChange("none");
     onRepeatUntilChange("");
     setCustomPanelOpen(false);
     setVisibleMonth(getInitialVisibleMonth("", todayString));
     setRepeatUntilVisibleMonth(getInitialVisibleMonth("", todayString));
-  }, [onDateChange, onReminderTimeChange, onRepeatChange, onRepeatUntilChange, todayString]);
+  }, [onDateChange, onEndTimeChange, onReminderTimeChange, onRepeatChange, onRepeatUntilChange, onStartTimeChange, todayString]);
 
   const dueDateObject = value ? parseLocalDateString(value) : null;
   const customAnchorDate = value || todayString;
@@ -458,7 +470,7 @@ function TaskDateRepeatControlInner({
         <Dialog
           open={open}
           title="Schedule"
-          description="Choose the due date, reminder, and repeat settings in one place."
+          description="Choose the due date, task time, reminder, and repeat settings in one place."
           onOpenChange={handleOpenChange}
           contentClassName="h-[min(94dvh,58rem)] w-full max-w-[min(76rem,calc(100vw-2rem))] rounded-[1.8rem] p-0"
           headerClassName="border-b border-border/70 px-6 py-4"
@@ -556,47 +568,118 @@ function TaskDateRepeatControlInner({
                 </div>
 
                 <div className="space-y-4">
+                  <div className="space-y-3 rounded-[1.1rem] border border-border/70 bg-card/75 px-4 py-4">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      <span>Time</span>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="task-start-time">
+                          Start time
+                        </label>
+                        <Input
+                          id="task-start-time"
+                          type="time"
+                          value={startTime}
+                          disabled={!value}
+                          onChange={(event) => {
+                            const nextStartTime = event.target.value;
+                            onStartTimeChange(nextStartTime);
+                            if (!nextStartTime) {
+                              onEndTimeChange("");
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="task-end-time">
+                          End time
+                        </label>
+                        <Input
+                          id="task-end-time"
+                          type="time"
+                          value={endTime}
+                          disabled={!value || !startTime}
+                          onChange={(event) => onEndTimeChange(event.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!startTime}
+                        onClick={() => {
+                          onStartTimeChange("");
+                          onEndTimeChange("");
+                        }}
+                      >
+                        Clear start
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!endTime}
+                        onClick={() => onEndTimeChange("")}
+                      >
+                        Clear end
+                      </Button>
+                    </div>
+
+                    <p className={cn("text-xs", taskTimeError ? "text-rose-600 dark:text-rose-300" : "text-muted-foreground")}>
+                      {!value
+                        ? "Pick a due date before setting task time."
+                        : taskTimeError ?? (startTime
+                          ? "Add an optional end time or leave the task open-ended."
+                          : "Add an optional start time for scheduled tasks.")}
+                    </p>
+                  </div>
+
                   <div className="space-y-2 rounded-[1.1rem] border border-border/70 bg-card/75 px-4 py-4">
                     <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       <Bell className="h-3.5 w-3.5" />
                       <span>Reminder</span>
                     </div>
 
-                  <div className="space-y-2">
-                    <Input
-                      type="time"
-                      value={reminderTime}
-                      disabled={!value}
-                      onChange={(event) => onReminderTimeChange(event.target.value)}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
+                    <div className="space-y-2">
+                      <Input
+                        type="time"
+                        value={reminderTime}
                         disabled={!value}
-                        onClick={() => onReminderTimeChange("09:00")}
-                      >
-                        09:00
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!value}
-                        onClick={() => onReminderTimeChange("16:00")}
-                      >
-                        16:00
-                      </Button>
-                      <Button variant="ghost" size="sm" disabled={!value || !reminderTime} onClick={() => onReminderTimeChange("")}>
-                        No reminder
-                      </Button>
+                        onChange={(event) => onReminderTimeChange(event.target.value)}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!value}
+                          onClick={() => onReminderTimeChange("09:00")}
+                        >
+                          09:00
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!value}
+                          onClick={() => onReminderTimeChange("16:00")}
+                        >
+                          16:00
+                        </Button>
+                        <Button variant="ghost" size="sm" disabled={!value || !reminderTime} onClick={() => onReminderTimeChange("")}>
+                          No reminder
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {!value
+                          ? "Pick a due date before setting a reminder."
+                          : "Reminder time is stored with the task and reused by supported clients."}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {!value
-                        ? "Pick a due date before setting a reminder."
-                        : "Reminder time is stored with the task and reused by supported clients."}
-                    </p>
                   </div>
-                </div>
 
                 <div className="space-y-2 rounded-[1.1rem] border border-border/70 bg-card/75 px-4 py-4">
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">

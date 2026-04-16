@@ -266,6 +266,8 @@ fun TaskManagerApp(
                             description = null,
                             descriptionBlocks = emptyList(),
                             dueDate = null,
+                            startTime = null,
+                            endTime = null,
                             reminderTime = null,
                             repeatUntil = null,
                             isDone = false,

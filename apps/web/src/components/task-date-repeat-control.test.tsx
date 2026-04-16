@@ -8,16 +8,22 @@ import type { TaskCustomRepeatConfig, TaskRepeat } from "@/lib/types";
 
 function TaskDateRepeatControlHarness({
   initialValue = "",
+  initialStartTime = "",
+  initialEndTime = "",
   initialRepeat = "none",
   initialRepeatConfig = null,
   initialRepeatUntil = "",
 }: {
   initialValue?: string;
+  initialStartTime?: string;
+  initialEndTime?: string;
   initialRepeat?: TaskRepeat;
   initialRepeatConfig?: TaskCustomRepeatConfig | null;
   initialRepeatUntil?: string;
 }) {
   const [value, setValue] = useState(initialValue);
+  const [startTime, setStartTime] = useState(initialStartTime);
+  const [endTime, setEndTime] = useState(initialEndTime);
   const [reminderTime, setReminderTime] = useState("");
   const [repeat, setRepeat] = useState<TaskRepeat>(initialRepeat);
   const [repeatConfig, setRepeatConfig] = useState<TaskCustomRepeatConfig | null>(initialRepeatConfig);
@@ -26,11 +32,15 @@ function TaskDateRepeatControlHarness({
   return (
     <TaskDateRepeatControl
       value={value}
+      startTime={startTime}
+      endTime={endTime}
       reminderTime={reminderTime}
       repeat={repeat}
       repeatConfig={repeatConfig}
       repeatUntil={repeatUntil}
       onDateChange={setValue}
+      onStartTimeChange={setStartTime}
+      onEndTimeChange={setEndTime}
       onReminderTimeChange={setReminderTime}
       onRepeatChange={setRepeat}
       onRepeatConfigChange={setRepeatConfig}
@@ -46,8 +56,9 @@ describe("TaskDateRepeatControl", () => {
     fireEvent.click(screen.getByRole("button", { name: /No date/i }));
 
     expect(screen.getByRole("dialog", { name: "Schedule" })).not.toBeNull();
-    expect(screen.getByText("Choose the due date, reminder, and repeat settings in one place.")).not.toBeNull();
+    expect(screen.getByText("Choose the due date, task time, reminder, and repeat settings in one place.")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Today" })).not.toBeNull();
+    expect(screen.getByText("Time")).not.toBeNull();
     expect(screen.getByText("Reminder")).not.toBeNull();
     expect(screen.getByText("Repeat")).not.toBeNull();
   });
@@ -144,6 +155,19 @@ describe("TaskDateRepeatControl", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Custom/i }));
     expect((await screen.findByRole("spinbutton") as HTMLInputElement).value).toBe("1");
+  });
+
+  it("supports start and end time selection with inline validation", () => {
+    render(<TaskDateRepeatControlHarness initialValue="2026-03-16" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Mar 16/i }));
+    fireEvent.change(screen.getByLabelText("Start time"), { target: { value: "09:00" } });
+    fireEvent.change(screen.getByLabelText("End time"), { target: { value: "08:30" } });
+
+    expect(screen.getByText("End time must be later than the start time.")).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("End time"), { target: { value: "10:15" } });
+    expect(screen.queryByText("End time must be later than the start time.")).toBeNull();
   });
 
   it("restores saved custom yearly repeat state and allows month navigation plus date selection", async () => {

@@ -1,6 +1,7 @@
 package com.taskmanager.android.ui.screens
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -194,5 +195,37 @@ class TaskEditorScreenTest {
         composeRule.runOnIdle {
             assertThat(createdPayload?.repeatConfig?.interval).isEqualTo(1)
         }
+    }
+
+    @Test
+    fun `task editor restores start and end time chips for timed tasks`() {
+        composeRule.setContent {
+            TaskManagerTheme {
+                TaskEditorScreen(
+                    task = testTaskItem(
+                        id = 88,
+                        title = "Timed task",
+                        dueDate = "2026-03-16",
+                        startTime = "09:00",
+                        endTime = "10:30",
+                    ),
+                    lists = emptyList(),
+                    editorContext = TaskEditorContext(viewTarget = TaskViewTarget.All),
+                    onBack = {},
+                    onCreateTask = { Result.success(Unit) },
+                    onUpdateTask = { _, _ -> Result.success(Unit) },
+                    onDeleteTask = { _ -> Result.success(Unit) },
+                    onCreateSubtask = { _, _ -> Result.success(Unit) },
+                    onUpdateSubtask = { _, _ -> Result.success(Unit) },
+                    onToggleSubtask = { _ -> Result.success(Unit) },
+                    onDeleteSubtask = { _ -> Result.success(Unit) },
+                    onReorderSubtasks = { _, _ -> Result.success(Unit) },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Starts 09:00").assertIsDisplayed()
+        composeRule.onNodeWithText("Ends 10:30").assertIsDisplayed()
+        composeRule.onNodeWithText("09:00–10:30").assertIsDisplayed()
     }
 }

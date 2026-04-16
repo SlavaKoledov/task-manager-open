@@ -55,6 +55,8 @@ class Task(Base):
         server_default=text("'[]'"),
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    end_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     reminder_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     repeat_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

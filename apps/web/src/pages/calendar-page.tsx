@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, Plus, Rows3 } from "lucide-react";
+import { AlarmClock, CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, Plus, Rows3 } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { TaskDialog } from "@/components/task-dialog";
@@ -30,6 +30,7 @@ import {
 } from "@/lib/task-calendar";
 import { buildTopLevelTaskReorderScopeForTask, getTopLevelTaskIdsForReorderScope } from "@/lib/task-groups";
 import { getTaskPriorityOption } from "@/lib/task-options";
+import { formatTaskTimeRange } from "@/lib/task-time";
 import { insertOrderedId } from "@/lib/task-reorder";
 import type { ListItem, NewTaskPlacementPreference, TaskCreatePayload, TaskDraft, TaskItem, TaskSubtask, TaskUpdatePayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -178,20 +179,37 @@ function buildOccurrenceChipStyle(occurrence: TaskOccurrence, listById: Map<numb
   };
 }
 
+function buildOccurrenceTimeBadgeStyle(task: TaskItem) {
+  const accentColor = getTaskPriorityOption(task.priority).accentColor;
+
+  return {
+    borderColor: toColorAlpha(accentColor, 0.42),
+    backgroundColor: toColorAlpha(accentColor, 0.16),
+    color: accentColor,
+  };
+}
+
 function CalendarTaskChip({
   occurrence,
   listById,
   onOpenTask,
+  variant = "month",
 }: {
   occurrence: TaskOccurrence;
   listById: Map<number, ListItem>;
   onOpenTask: (task: TaskItem) => void;
+  variant?: "month" | "week";
 }) {
+  const timeLabel = formatTaskTimeRange(occurrence.task.start_time, occurrence.task.end_time);
+  const showWeekTimeBadge = variant === "week" && Boolean(timeLabel);
+  const showMonthTimeIcon = variant === "month" && Boolean(timeLabel);
+
   return (
     <button
       type="button"
       className={cn(
-        "flex w-full items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left transition-transform duration-100 hover:translate-y-[-1px]",
+        "flex w-full rounded-xl border px-2.5 py-1.5 text-left transition-transform duration-100 hover:translate-y-[-1px]",
+        showWeekTimeBadge ? "flex-col items-start gap-2" : "items-center gap-2",
         occurrence.task.is_done && "opacity-70",
       )}
       style={buildOccurrenceChipStyle(occurrence, listById)}
@@ -199,13 +217,24 @@ function CalendarTaskChip({
         event.stopPropagation();
         onOpenTask(occurrence.task);
       }}
-    >
-      <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", occurrence.task.is_done && "line-through")}>
-        {occurrence.task.title}
-      </span>
-      {occurrence.task.reminder_time ? (
-        <span className="shrink-0 text-[11px] font-medium opacity-80">{occurrence.task.reminder_time}</span>
+      >
+      {showWeekTimeBadge ? (
+        <span
+          className="inline-flex min-h-7 min-w-[6.5rem] max-w-[72%] items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold"
+          style={buildOccurrenceTimeBadgeStyle(occurrence.task)}
+        >
+          {timeLabel}
+        </span>
       ) : null}
+
+      <div className="flex w-full items-center gap-2">
+        <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium", occurrence.task.is_done && "line-through")}>
+          {occurrence.task.title}
+        </span>
+        {showMonthTimeIcon ? (
+          <AlarmClock className="h-3.5 w-3.5 shrink-0 opacity-85" aria-label={`Scheduled at ${timeLabel}`} />
+        ) : null}
+      </div>
     </button>
   );
 }
@@ -248,13 +277,18 @@ function CalendarAgendaSection({
               style={{ backgroundColor: buildOccurrenceChipStyle(occurrence, listById).color }}
             />
             <div className="min-w-0 flex-1">
+              {formatTaskTimeRange(occurrence.task.start_time, occurrence.task.end_time) ? (
+                <span
+                  className="mb-2 inline-flex min-h-7 min-w-[6.5rem] max-w-[38%] items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold"
+                  style={buildOccurrenceTimeBadgeStyle(occurrence.task)}
+                >
+                  {formatTaskTimeRange(occurrence.task.start_time, occurrence.task.end_time)}
+                </span>
+              ) : null}
               <div className="flex items-start gap-3">
                 <span className={cn("min-w-0 flex-1 truncate text-sm font-semibold text-foreground", occurrence.task.is_done && "text-muted-foreground line-through")}>
                   {occurrence.task.title}
                 </span>
-                {occurrence.task.reminder_time ? (
-                  <span className="shrink-0 text-xs font-medium text-muted-foreground">{occurrence.task.reminder_time}</span>
-                ) : null}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{occurrence.task.list_id ? listById.get(occurrence.task.list_id)?.name ?? "List" : "Inbox"}</span>
@@ -596,6 +630,7 @@ export const CalendarPageView = memo(function CalendarPageView({
                     occurrence={occurrence}
                     listById={listById}
                     onOpenTask={onOpenTask}
+                    variant="month"
                   />
                 ))}
 
@@ -678,6 +713,7 @@ export const CalendarPageView = memo(function CalendarPageView({
                       occurrence={occurrence}
                       listById={listById}
                       onOpenTask={onOpenTask}
+                      variant="week"
                     />
                   ))
                 )}

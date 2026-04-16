@@ -67,6 +67,8 @@ function buildLocalDraftSubtask(id: number, title: string, position: number, dra
     description: null,
     description_blocks: [],
     due_date: null,
+    start_time: null,
+    end_time: null,
     reminder_time: null,
     repeat_config: null,
     repeat_until: null,
@@ -117,13 +119,15 @@ export function TaskDialog({
     if (task) {
       const nextDescriptionBlocks = ensureDescriptionBlocks(task.description_blocks, task.description);
 
-      setDraft({
-        title: task.title,
-        description_blocks: nextDescriptionBlocks,
-        due_date: task.due_date ?? "",
-        reminder_time: task.reminder_time ?? "",
-        repeat_config: task.repeat_config ?? null,
-        repeat_until: task.repeat_until ?? "",
+        setDraft({
+          title: task.title,
+          description_blocks: nextDescriptionBlocks,
+          due_date: task.due_date ?? "",
+          start_time: task.start_time ?? "",
+          end_time: task.end_time ?? "",
+          reminder_time: task.reminder_time ?? "",
+          repeat_config: task.repeat_config ?? null,
+          repeat_until: task.repeat_until ?? "",
         is_done: task.is_done,
         is_pinned: task.is_pinned,
         priority: task.priority,
@@ -236,11 +240,25 @@ export function TaskDialog({
     setDraft((current) => ({
       ...current,
       due_date: nextDate,
+      start_time: nextDate ? current.start_time : "",
+      end_time: nextDate ? current.end_time : "",
       reminder_time: nextDate ? current.reminder_time : "",
       repeat_until: !nextDate || (current.repeat_until && current.repeat_until < nextDate) ? "" : current.repeat_until,
       repeat: nextDate ? current.repeat : "none",
       repeat_config: current.repeat_config,
     }));
+  }, []);
+
+  const handleStartTimeChange = useCallback((nextStartTime: string) => {
+    setDraft((current) => ({
+      ...current,
+      start_time: nextStartTime,
+      end_time: nextStartTime ? current.end_time : "",
+    }));
+  }, []);
+
+  const handleEndTimeChange = useCallback((nextEndTime: string) => {
+    setDraft((current) => ({ ...current, end_time: nextEndTime }));
   }, []);
 
   const handleReminderTimeChange = useCallback((nextReminderTime: string) => {
@@ -422,11 +440,15 @@ export function TaskDialog({
                 />
                 <TaskDateRepeatControl
                   value={draft.due_date}
+                  startTime={draft.start_time}
+                  endTime={draft.end_time}
                   reminderTime={draft.reminder_time}
                   repeat={draft.repeat}
                   repeatConfig={draft.repeat_config}
                   repeatUntil={draft.repeat_until}
                   onDateChange={handleDateChange}
+                  onStartTimeChange={handleStartTimeChange}
+                  onEndTimeChange={handleEndTimeChange}
                   onReminderTimeChange={handleReminderTimeChange}
                   onRepeatChange={handleRepeatChange}
                   onRepeatConfigChange={handleRepeatConfigChange}

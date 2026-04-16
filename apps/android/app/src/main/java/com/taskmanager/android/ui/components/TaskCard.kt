@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.taskmanager.android.domain.formatDueDateLabel
+import com.taskmanager.android.domain.formatTaskTimeRange
 import com.taskmanager.android.domain.getSubtaskProgressSummary
 import com.taskmanager.android.domain.getTaskRepeatSummary
 import com.taskmanager.android.domain.hasMeaningfulDescription
@@ -78,6 +79,9 @@ fun TaskCard(
     var menuExpanded by remember(task.id) { mutableStateOf(false) }
     val dueLabel = remember(task.dueDate, todayString, tomorrowString) {
         formatDueDateLabel(task.dueDate, todayString, tomorrowString)
+    }
+    val timeLabel = remember(task.startTime, task.endTime) {
+        formatTaskTimeRange(task.startTime, task.endTime)
     }
     val subtaskProgress = remember(task.subtasks) {
         getSubtaskProgressSummary(
@@ -167,6 +171,9 @@ fun TaskCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (timeLabel != null) {
+                            TaskBadge(label = timeLabel, colors = priorityBadgeColors)
+                        }
                         TaskBadge(
                             label = dueLabel ?: "No date",
                             colors = dueBadgeColors,

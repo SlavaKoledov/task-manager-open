@@ -61,6 +61,7 @@ object AppModule {
             TaskManagerDatabase.MIGRATION_1_2,
             TaskManagerDatabase.MIGRATION_2_3,
             TaskManagerDatabase.MIGRATION_3_4,
+            TaskManagerDatabase.MIGRATION_4_5,
         )
             .build()
 

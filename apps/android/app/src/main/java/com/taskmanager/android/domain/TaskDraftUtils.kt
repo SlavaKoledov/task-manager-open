@@ -52,6 +52,8 @@ fun buildTaskDraft(
         title = "",
         description = "",
         dueDate = dueDate,
+        startTime = "",
+        endTime = "",
         reminderTime = "",
         repeatUntil = "",
         isDone = false,
@@ -66,6 +68,8 @@ fun buildTaskDraft(task: TaskItem): TaskDraft = TaskDraft(
     title = task.title,
     description = descriptionBlocksToText(ensureDescriptionBlocks(task.descriptionBlocks, task.description)).orEmpty(),
     dueDate = task.dueDate.orEmpty(),
+    startTime = task.startTime.orEmpty(),
+    endTime = task.endTime.orEmpty(),
     reminderTime = task.reminderTime.orEmpty(),
     repeatConfig = task.repeatConfig,
     repeatUntil = task.repeatUntil.orEmpty(),
@@ -120,6 +124,8 @@ fun validateTaskDraft(draft: TaskDraft): String? {
         return "Choose a due date before setting a reminder."
     }
 
+    validateTaskTimeRange(draft.dueDate, draft.startTime, draft.endTime)?.let { return it }
+
     return null
 }
 
@@ -133,6 +139,12 @@ fun buildTaskCreatePayloadFromDraft(
         description = descriptionBlocksToText(normalizedBlocks),
         descriptionBlocks = normalizedBlocks.map(DescriptionBlock::toApi),
         dueDate = draft.dueDate.takeIf { it.isNotBlank() },
+        startTime = draft.dueDate.takeIf { it.isNotBlank() }?.let { normalizeTaskTime(draft.startTime) },
+        endTime = if (draft.dueDate.isNotBlank() && normalizeTaskTime(draft.startTime) != null) {
+            normalizeTaskTime(draft.endTime)
+        } else {
+            null
+        },
         reminderTime = draft.reminderTime.takeIf { draft.dueDate.isNotBlank() && it.isNotBlank() },
         repeatConfig = if (draft.repeat == TaskRepeat.CUSTOM) normalizeCustomRepeatConfig(draft.repeatConfig)?.toApi() else null,
         repeatUntil = draft.repeatUntil.takeIf { draft.repeat != TaskRepeat.NONE && it.isNotBlank() },
@@ -148,6 +160,8 @@ fun buildTaskCreatePayloadFromDraft(
                     description = null,
                     descriptionBlocks = emptyList(),
                     dueDate = null,
+                    startTime = null,
+                    endTime = null,
                     reminderTime = null,
                     isDone = subtask.isDone,
                 )
@@ -183,6 +197,18 @@ fun buildTaskUpdatePayloadJson(
         )
         put("due_date", draft.dueDate.takeIf { it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull)
         put(
+            "start_time",
+            draft.startTime.takeIf { draft.dueDate.isNotBlank() }?.let(::normalizeTaskTime)?.let(::JsonPrimitive) ?: JsonNull,
+        )
+        put(
+            "end_time",
+            if (draft.dueDate.isNotBlank() && normalizeTaskTime(draft.startTime) != null) {
+                normalizeTaskTime(draft.endTime)?.let(::JsonPrimitive) ?: JsonNull
+            } else {
+                JsonNull
+            },
+        )
+        put(
             "reminder_time",
             draft.reminderTime.takeIf { draft.dueDate.isNotBlank() && it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull,
         )
@@ -208,6 +234,8 @@ fun buildTaskUpdatePayloadJson(
 
 fun updateDraftDate(draft: TaskDraft, nextDate: String): TaskDraft = draft.copy(
     dueDate = nextDate,
+    startTime = if (nextDate.isBlank()) "" else draft.startTime,
+    endTime = if (nextDate.isBlank()) "" else draft.endTime,
     reminderTime = if (nextDate.isBlank()) "" else draft.reminderTime,
     repeatUntil = if (nextDate.isBlank() || (draft.repeatUntil.isNotBlank() && draft.repeatUntil < nextDate)) "" else draft.repeatUntil,
     repeat = if (nextDate.isNotBlank()) draft.repeat else TaskRepeat.NONE,

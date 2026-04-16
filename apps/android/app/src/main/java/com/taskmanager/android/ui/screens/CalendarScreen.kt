@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.taskmanager.android.domain.buildCalendarMonthDays
 import com.taskmanager.android.domain.buildTaskOccurrencesInRange
 import com.taskmanager.android.domain.compareCalendarOccurrences
+import com.taskmanager.android.domain.formatTaskTimeRange
 import com.taskmanager.android.domain.getCalendarMonthRange
 import com.taskmanager.android.domain.getTaskRepeatSummary
 import com.taskmanager.android.domain.groupTaskOccurrencesByDate
@@ -350,6 +352,9 @@ private fun CalendarTaskRow(
     onOpenTask: (TaskItem) -> Unit,
     muted: Boolean,
 ) {
+    val timeLabel = remember(task.startTime, task.endTime) {
+        formatTaskTimeRange(task.startTime, task.endTime)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -390,10 +395,22 @@ private fun CalendarTaskRow(
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = task.reminderTime ?: "",
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f) else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (timeLabel != null) {
+            Surface(
+                color = accentColor.copy(alpha = 0.14f),
+                contentColor = accentColor,
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    text = timeLabel,
+                    modifier = Modifier
+                        .widthIn(min = 76.dp, max = 132.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }

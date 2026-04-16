@@ -4,9 +4,11 @@ import { AlignLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, GripV
 import { PriorityCheckbox } from "@/components/priority-checkbox";
 import { Badge } from "@/components/ui/badge";
 import { formatDueDateLabel } from "@/lib/date";
+import { getTaskPriorityOption } from "@/lib/task-options";
 import { hasMeaningfulDescription } from "@/lib/task-description";
 import { getSubtaskProgressSummary } from "@/lib/task-progress";
 import { getTaskRepeatSummary } from "@/lib/task-repeat";
+import { formatTaskTimeRange } from "@/lib/task-time";
 import type { ReorderInsertDirection, TaskDropDirection } from "@/lib/task-reorder";
 import { isTaskOverdue } from "@/lib/task-groups";
 import type { ListItem, TaskItem, TaskSubtask } from "@/lib/types";
@@ -57,10 +59,12 @@ function TaskCardInner({
   subtaskDropIndicator = null,
 }: TaskCardProps) {
   const dueDateLabel = formatDueDateLabel(task.due_date, todayString, tomorrowString);
+  const timeLabel = formatTaskTimeRange(task.start_time, task.end_time);
   const activeSubtasks = useMemo(() => task.subtasks.filter((subtask) => !subtask.is_done), [task.subtasks]);
   const doneSubtasks = useMemo(() => task.subtasks.filter((subtask) => subtask.is_done), [task.subtasks]);
   const subtaskProgress = useMemo(() => getSubtaskProgressSummary(task.subtasks), [task.subtasks]);
   const isOverdue = useMemo(() => isTaskOverdue(task, todayString), [task, todayString]);
+  const priorityAccent = getTaskPriorityOption(task.priority).accentColor;
 
   function stopPropagation(event: MouseEvent<HTMLElement>) {
     event.stopPropagation();
@@ -148,6 +152,17 @@ function TaskCardInner({
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
+            {timeLabel ? (
+              <Badge
+                style={{
+                  borderColor: `${priorityAccent}55`,
+                  backgroundColor: `${priorityAccent}1a`,
+                  color: priorityAccent,
+                }}
+              >
+                {timeLabel}
+              </Badge>
+            ) : null}
             {dueDateLabel ? (
               <Badge
                 className={cn(

@@ -13,6 +13,48 @@ from app.schemas.task_description import TaskDescriptionBlock
 REMINDER_TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
 
+def normalize_hhmm_value(value: str | None, *, field_label: str) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    if not REMINDER_TIME_PATTERN.fullmatch(cleaned):
+        raise ValueError(f"{field_label} must use HH:MM format.")
+
+    hours, minutes = cleaned.split(":")
+    if int(hours) > 23 or int(minutes) > 59:
+        raise ValueError(f"{field_label} must use HH:MM format.")
+
+    return cleaned
+
+
+def _time_to_minutes(value: str) -> int:
+    hours, minutes = value.split(":")
+    return int(hours) * 60 + int(minutes)
+
+
+def validate_task_time_window(
+    due_date: date | None,
+    start_time: str | None,
+    end_time: str | None,
+) -> tuple[str | None, str | None]:
+    if due_date is None:
+        return None, None
+
+    if start_time is None:
+        if end_time is not None:
+            raise ValueError("End time requires a start time.")
+        return None, None
+
+    if end_time is not None and _time_to_minutes(end_time) <= _time_to_minutes(start_time):
+        raise ValueError("End time must be later than the start time.")
+
+    return start_time, end_time
+
+
 class TaskCustomRepeatConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +104,8 @@ class TaskSubtaskCreate(BaseModel):
     description: str | None = None
     description_blocks: list[TaskDescriptionBlock] | None = None
     due_date: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
     reminder_time: str | None = None
     is_done: bool = False
 
@@ -84,17 +128,26 @@ class TaskSubtaskCreate(BaseModel):
     @field_validator("reminder_time")
     @classmethod
     def normalize_reminder_time(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        if not cleaned:
-            return None
-        if not REMINDER_TIME_PATTERN.fullmatch(cleaned):
-            raise ValueError("Reminder time must use HH:MM format.")
-        hours, minutes = cleaned.split(":")
-        if int(hours) > 23 or int(minutes) > 59:
-            raise ValueError("Reminder time must use HH:MM format.")
-        return cleaned
+        return normalize_hhmm_value(value, field_label="Reminder time")
+
+    @field_validator("start_time")
+    @classmethod
+    def normalize_start_time(cls, value: str | None) -> str | None:
+        return normalize_hhmm_value(value, field_label="Start time")
+
+    @field_validator("end_time")
+    @classmethod
+    def normalize_end_time(cls, value: str | None) -> str | None:
+        return normalize_hhmm_value(value, field_label="End time")
+
+    @model_validator(mode="after")
+    def validate_time_window(self) -> "TaskSubtaskCreate":
+        self.start_time, self.end_time = validate_task_time_window(
+            due_date=self.due_date,
+            start_time=self.start_time,
+            end_time=self.end_time,
+        )
+        return self
 
 
 class TaskCreate(BaseModel):
@@ -105,6 +158,8 @@ class TaskCreate(BaseModel):
     description: str | None = None
     description_blocks: list[TaskDescriptionBlock] | None = None
     due_date: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
     reminder_time: str | None = None
     is_done: bool = False
     is_pinned: bool = False
@@ -145,6 +200,25 @@ class TaskCreate(BaseModel):
     def normalize_reminder_time(cls, value: str | None) -> str | None:
         return TaskSubtaskCreate.normalize_reminder_time(value)
 
+    @field_validator("start_time")
+    @classmethod
+    def normalize_start_time(cls, value: str | None) -> str | None:
+        return TaskSubtaskCreate.normalize_start_time(value)
+
+    @field_validator("end_time")
+    @classmethod
+    def normalize_end_time(cls, value: str | None) -> str | None:
+        return TaskSubtaskCreate.normalize_end_time(value)
+
+    @model_validator(mode="after")
+    def validate_time_window(self) -> "TaskCreate":
+        self.start_time, self.end_time = validate_task_time_window(
+            due_date=self.due_date,
+            start_time=self.start_time,
+            end_time=self.end_time,
+        )
+        return self
+
 
 class TaskUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -153,6 +227,8 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     description_blocks: list[TaskDescriptionBlock] | None = None
     due_date: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
     reminder_time: str | None = None
     is_done: bool | None = None
     is_pinned: bool | None = None
@@ -185,6 +261,37 @@ class TaskUpdate(BaseModel):
     def normalize_reminder_time(cls, value: str | None) -> str | None:
         return TaskSubtaskCreate.normalize_reminder_time(value)
 
+    @field_validator("start_time")
+    @classmethod
+    def normalize_start_time(cls, value: str | None) -> str | None:
+        return TaskSubtaskCreate.normalize_start_time(value)
+
+    @field_validator("end_time")
+    @classmethod
+    def normalize_end_time(cls, value: str | None) -> str | None:
+        return TaskSubtaskCreate.normalize_end_time(value)
+
+    @model_validator(mode="after")
+    def validate_time_window(self) -> "TaskUpdate":
+        if "due_date" in self.model_fields_set and self.due_date is None:
+            self.start_time = None
+            self.end_time = None
+            return self
+
+        if "start_time" in self.model_fields_set and self.start_time is None and self.end_time is not None:
+            raise ValueError("End time requires a start time.")
+
+        if (
+            "start_time" in self.model_fields_set and
+            "end_time" in self.model_fields_set and
+            self.start_time is not None and
+            self.end_time is not None and
+            _time_to_minutes(self.end_time) <= _time_to_minutes(self.start_time)
+        ):
+            raise ValueError("End time must be later than the start time.")
+
+        return self
+
 
 class TaskSubtaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -194,6 +301,8 @@ class TaskSubtaskRead(BaseModel):
     description: str | None
     description_blocks: list[TaskDescriptionBlock] = Field(default_factory=list)
     due_date: date | None
+    start_time: str | None
+    end_time: str | None
     reminder_time: str | None
     is_done: bool
     is_pinned: bool

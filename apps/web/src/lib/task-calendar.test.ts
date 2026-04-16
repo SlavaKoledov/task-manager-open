@@ -237,7 +237,7 @@ describe("task calendar helpers", () => {
     ]);
   });
 
-  it("groups and sorts occurrences by reminder time then title", () => {
+  it("groups and sorts occurrences by task start time then title", () => {
     const occurrencesByDate = groupTaskOccurrencesByDate([
       {
         task: makeTask({ id: 2, title: "No time", due_date: "2026-03-10" }),
@@ -246,13 +246,13 @@ describe("task calendar helpers", () => {
         isRecurring: false,
       },
       {
-        task: makeTask({ id: 3, title: "Afternoon", due_date: "2026-03-10", reminder_time: "14:00" }),
+        task: makeTask({ id: 3, title: "Afternoon", due_date: "2026-03-10", start_time: "14:00" }),
         date: new Date(2026, 2, 10),
         dateString: "2026-03-10",
         isRecurring: false,
       },
       {
-        task: makeTask({ id: 1, title: "Morning", due_date: "2026-03-10", reminder_time: "09:00" }),
+        task: makeTask({ id: 1, title: "Morning", due_date: "2026-03-10", start_time: "09:00" }),
         date: new Date(2026, 2, 10),
         dateString: "2026-03-10",
         isRecurring: false,

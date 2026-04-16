@@ -166,4 +166,25 @@ describe("TaskCard", () => {
 
     expect(html).toContain("Every 2 weeks on M, W, F");
   });
+
+  it("renders a priority-colored time badge before the other metadata", () => {
+    const html = renderToStaticMarkup(
+      createElement(TaskCard, {
+        task: makeTask({
+          start_time: "09:00",
+          end_time: "10:30",
+        }),
+        todayString: "2026-03-13",
+        tomorrowString: "2026-03-14",
+        subtasksCollapsed: false,
+        onToggle: async () => undefined,
+        onToggleSubtask: async () => undefined,
+        onEdit: () => undefined,
+        onToggleSubtasks: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("09:00–10:30");
+    expect(html.indexOf("09:00–10:30")).toBeLessThan(html.indexOf("Tomorrow"));
+  });
 });

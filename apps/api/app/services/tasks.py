@@ -20,6 +20,7 @@ from app.schemas.tasks import (
     SubtaskReorderPayload,
     TaskCreate,
     TaskUpdate,
+    validate_task_time_window,
 )
 from app.services.live_events import publish_task_event
 from app.services.task_repeat import parse_repeat_config, resolve_next_due_date
@@ -168,6 +169,20 @@ def _ensure_reminder_configuration(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Reminder time requires a due date.",
         )
+
+
+def _normalize_task_time_fields(
+    due_date: date | None,
+    start_time: str | None,
+    end_time: str | None,
+) -> tuple[str | None, str | None]:
+    try:
+        return validate_task_time_window(due_date, start_time, end_time)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
 
 def _resolve_next_due_date(
@@ -366,6 +381,13 @@ def _prepare_create_values(session: Session, payload: TaskCreate, parent_task: T
     )
     values["repeat_config"] = repeat_config.model_dump(mode="python") if repeat_config is not None else None
     _ensure_reminder_configuration(values.get("due_date"), values.get("reminder_time"))
+    start_time, end_time = _normalize_task_time_fields(
+        values.get("due_date"),
+        values.get("start_time"),
+        values.get("end_time"),
+    )
+    values["start_time"] = start_time
+    values["end_time"] = end_time
 
     return values
 
@@ -379,12 +401,19 @@ def _build_nested_subtask_values(parent_task: Task, payload: TaskSubtaskCreate, 
         prefer_blocks=has_blocks,
     )
     _ensure_reminder_configuration(values.get("due_date"), values.get("reminder_time"))
+    start_time, end_time = _normalize_task_time_fields(
+        values.get("due_date"),
+        values.get("start_time"),
+        values.get("end_time"),
+    )
 
     return {
         "title": values["title"],
         "description": description,
         "description_blocks": description_blocks,
         "due_date": values.get("due_date"),
+        "start_time": start_time,
+        "end_time": end_time,
         "reminder_time": values.get("reminder_time"),
         "is_done": values["is_done"],
         "is_pinned": False,
@@ -429,6 +458,8 @@ def _prepare_update_values(task: Task, payload: TaskUpdate, session: Session) ->
 
     next_repeat = updates.get("repeat", task.repeat)
     next_due_date = updates["due_date"] if "due_date" in updates else task.due_date
+    next_start_time = updates["start_time"] if "start_time" in updates else task.start_time
+    next_end_time = updates["end_time"] if "end_time" in updates else task.end_time
     next_reminder_time = updates["reminder_time"] if "reminder_time" in updates else task.reminder_time
     next_repeat_until = updates["repeat_until"] if "repeat_until" in updates else task.repeat_until
     next_repeat_config = (
@@ -438,12 +469,20 @@ def _prepare_update_values(task: Task, payload: TaskUpdate, session: Session) ->
     )
 
     if next_due_date is None:
+        updates["start_time"] = None
+        updates["end_time"] = None
+        next_start_time = None
+        next_end_time = None
         updates["reminder_time"] = None
         next_reminder_time = None
 
     if next_repeat == TaskRepeat.NONE:
         updates["repeat_until"] = None
         next_repeat_until = None
+
+    next_start_time, next_end_time = _normalize_task_time_fields(next_due_date, next_start_time, next_end_time)
+    updates["start_time"] = next_start_time
+    updates["end_time"] = next_end_time
 
     normalized_repeat_config = _ensure_repeat_configuration(next_repeat, next_due_date, next_repeat_until, next_repeat_config)
     updates["repeat_config"] = normalized_repeat_config.model_dump(mode="python") if normalized_repeat_config is not None else None
@@ -477,6 +516,8 @@ def _clone_subtasks_for_spawned_task(source_task: Task, spawned_task: Task, sess
             description=source_subtask.description,
             description_blocks=deepcopy(source_subtask.description_blocks),
             due_date=source_subtask.due_date,
+            start_time=source_subtask.start_time,
+            end_time=source_subtask.end_time,
             reminder_time=source_subtask.reminder_time,
             is_done=False,
             is_pinned=False,
@@ -655,6 +696,8 @@ def _spawn_next_recurring_task(task: Task, session: Session) -> Task | None:
         description=task.description,
         description_blocks=deepcopy(task.description_blocks),
         due_date=next_due_date,
+        start_time=task.start_time,
+        end_time=task.end_time,
         reminder_time=task.reminder_time,
         is_done=False,
         is_pinned=False if task.parent_id is not None else task.is_pinned,

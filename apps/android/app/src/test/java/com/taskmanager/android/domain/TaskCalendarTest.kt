@@ -47,8 +47,8 @@ class TaskCalendarTest {
             Triple(2, "2026-03-15", false),
             Triple(2, "2026-03-16", true),
             Triple(2, "2026-03-17", true),
-            Triple(1, "2026-03-18", false),
             Triple(2, "2026-03-18", true),
+            Triple(1, "2026-03-18", false),
         ).inOrder()
     }
 
@@ -61,18 +61,24 @@ class TaskCalendarTest {
                 isRecurring = false,
             ),
             CalendarTaskOccurrence(
-                task = testTaskItem(id = 2, title = "Morning", dueDate = "2026-03-18", reminderTime = "08:00"),
+                task = testTaskItem(id = 2, title = "Morning", dueDate = "2026-03-18", startTime = "08:00"),
                 date = LocalDate.parse("2026-03-18"),
                 isRecurring = false,
             ),
             CalendarTaskOccurrence(
-                task = testTaskItem(id = 3, title = "Done early", dueDate = "2026-03-18", reminderTime = "07:00", isDone = true),
+                task = testTaskItem(id = 3, title = "Done early", dueDate = "2026-03-18", startTime = "07:00", isDone = true),
                 date = LocalDate.parse("2026-03-18"),
                 isRecurring = false,
             ),
         ).sortedWith(::compareCalendarOccurrences)
 
         assertThat(occurrences.map { it.task.title }).containsExactly("Morning", "No time", "Done early").inOrder()
+    }
+
+    @Test
+    fun `format task time range supports single times and ranges`() {
+        assertThat(formatTaskTimeRange("09:00", null)).isEqualTo("09:00")
+        assertThat(formatTaskTimeRange("09:00", "10:30")).isEqualTo("09:00–10:30")
     }
 
     @Test

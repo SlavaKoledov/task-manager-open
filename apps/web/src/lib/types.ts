@@ -85,6 +85,8 @@ export type TaskSubtask = {
   description: string | null;
   description_blocks: DescriptionBlock[];
   due_date: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   reminder_time: string | null;
   repeat_config?: TaskCustomRepeatConfig | null;
   repeat_until: string | null;
@@ -113,6 +115,8 @@ export type TaskEditableFields = {
   description: string | null;
   description_blocks: DescriptionBlock[];
   due_date: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   reminder_time: string | null;
   repeat_config?: TaskCustomRepeatConfig | null;
   repeat_until: string | null;
@@ -128,6 +132,8 @@ export type TaskCreateSubtaskPayload = {
   description: string | null;
   description_blocks: DescriptionBlock[];
   due_date: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   reminder_time: string | null;
   is_done: boolean;
 };
@@ -151,6 +157,8 @@ export type TaskDraft = {
   title: string;
   description_blocks: DescriptionBlock[];
   due_date: string;
+  start_time: string;
+  end_time: string;
   reminder_time: string;
   repeat_config: TaskCustomRepeatConfig | null;
   repeat_until: string;

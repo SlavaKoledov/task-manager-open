@@ -1,5 +1,6 @@
 import { addDays, getLocalDateString, parseLocalDateString } from "@/lib/date";
 import { resolveNextRecurringDate as resolveNextTaskRepeatDate } from "@/lib/task-repeat";
+import { compareTaskStartTimes } from "@/lib/task-time";
 import type { TaskItem, TaskRepeat } from "@/lib/types";
 
 export type CalendarDay = {
@@ -251,19 +252,14 @@ export function groupTaskOccurrencesByDate(occurrences: TaskOccurrence[]): Map<s
 }
 
 export function compareTaskOccurrences(left: TaskOccurrence, right: TaskOccurrence): number {
-  const leftReminder = left.task.reminder_time ?? "";
-  const rightReminder = right.task.reminder_time ?? "";
-
-  if (leftReminder && !rightReminder) {
-    return -1;
-  }
-
-  if (!leftReminder && rightReminder) {
-    return 1;
-  }
-
-  if (leftReminder !== rightReminder) {
-    return leftReminder.localeCompare(rightReminder);
+  const timeDelta = compareTaskStartTimes(
+    left.task.start_time,
+    right.task.start_time,
+    left.task.end_time,
+    right.task.end_time,
+  );
+  if (timeDelta !== 0) {
+    return timeDelta;
   }
 
   const titleDelta = left.task.title.localeCompare(right.task.title);

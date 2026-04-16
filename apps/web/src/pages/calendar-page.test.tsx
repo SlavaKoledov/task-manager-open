@@ -62,4 +62,37 @@ describe("CalendarPageView", () => {
     expect(screen.getByText("Mar 16 - 22, 2026")).not.toBeNull();
     expect(screen.getByTestId("calendar-week-split-handle")).not.toBeNull();
   });
+
+  it("shows task time badges in the selected day panel and week view", () => {
+    render(
+      <CalendarPageView
+        tasks={[
+          makeTask({
+            start_time: "09:00",
+            end_time: "10:30",
+          }),
+        ]}
+        lists={[
+          {
+            id: 5,
+            name: "Work",
+            color: "#2563eb",
+            position: 0,
+            created_at: "2026-03-18T08:00:00Z",
+            updated_at: "2026-03-18T08:00:00Z",
+          },
+        ]}
+        showCompleted
+        todayString="2026-03-18"
+        onOpenTask={() => undefined}
+        onCreateTask={() => undefined}
+      />,
+    );
+
+    expect(screen.getAllByText("09:00–10:30").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+
+    expect(screen.getAllByText("09:00–10:30").length).toBeGreaterThan(0);
+  });
 });

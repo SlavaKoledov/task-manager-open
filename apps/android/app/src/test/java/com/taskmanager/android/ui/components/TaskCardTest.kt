@@ -52,12 +52,9 @@ class TaskCardTest {
                     onToggleTask = {},
                     onToggleSubtask = {},
                     onEditTask = {},
+                    onRequestDeleteTask = {},
                     onToggleSubtasks = {},
                     onToggleExpandedSubtaskPreview = {},
-                    canMoveUp = false,
-                    canMoveDown = false,
-                    onMoveUp = {},
-                    onMoveDown = {},
                 )
             }
         }
@@ -93,12 +90,9 @@ class TaskCardTest {
                     onToggleTask = {},
                     onToggleSubtask = {},
                     onEditTask = {},
+                    onRequestDeleteTask = {},
                     onToggleSubtasks = {},
                     onToggleExpandedSubtaskPreview = { expanded = !expanded },
-                    canMoveUp = false,
-                    canMoveDown = false,
-                    onMoveUp = {},
-                    onMoveDown = {},
                 )
             }
         }
@@ -136,12 +130,9 @@ class TaskCardTest {
                     onToggleTask = {},
                     onToggleSubtask = {},
                     onEditTask = {},
+                    onRequestDeleteTask = {},
                     onToggleSubtasks = {},
                     onToggleExpandedSubtaskPreview = {},
-                    canMoveUp = false,
-                    canMoveDown = false,
-                    onMoveUp = {},
-                    onMoveDown = {},
                     onStartMoveTask = { startedMoveTaskId = it.id },
                     onStartMoveSubtask = {},
                     canDropInside = true,
@@ -189,16 +180,45 @@ class TaskCardTest {
                     onToggleTask = {},
                     onToggleSubtask = {},
                     onEditTask = {},
+                    onRequestDeleteTask = {},
                     onToggleSubtasks = {},
                     onToggleExpandedSubtaskPreview = {},
-                    canMoveUp = false,
-                    canMoveDown = false,
-                    onMoveUp = {},
-                    onMoveDown = {},
                 )
             }
         }
 
         composeRule.onAllNodesWithContentDescription("Has description")[0].assertIsDisplayed()
+    }
+
+    @Test
+    fun `task card renders time badge before other metadata`() {
+        val task = testTaskItem(
+            id = 103,
+            title = "Timed task",
+            dueDate = "2026-03-15",
+            startTime = "09:00",
+            endTime = "10:30",
+        )
+
+        composeRule.setContent {
+            TaskManagerTheme {
+                TaskCard(
+                    task = task,
+                    list = null,
+                    todayString = "2026-03-15",
+                    tomorrowString = "2026-03-16",
+                    isSubtasksCollapsed = true,
+                    isExpandedSubtaskPreview = false,
+                    onToggleTask = {},
+                    onToggleSubtask = {},
+                    onEditTask = {},
+                    onRequestDeleteTask = {},
+                    onToggleSubtasks = {},
+                    onToggleExpandedSubtaskPreview = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("09:00–10:30").assertIsDisplayed()
     }
 }

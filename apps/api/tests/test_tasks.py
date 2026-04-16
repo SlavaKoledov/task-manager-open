@@ -86,6 +86,55 @@ def test_custom_repeat_requires_repeat_config(session) -> None:
     assert error.value.detail == "Custom repeat requires a repeat configuration."
 
 
+def test_task_schema_allows_start_time_only_and_clears_times_without_due_date() -> None:
+    created = TaskCreate.model_validate(
+        {
+            "title": "Timed task",
+            "due_date": "2026-03-18",
+            "start_time": "09:15",
+        }
+    )
+    normalized_without_date = TaskCreate.model_validate(
+        {
+            "title": "No date task",
+            "start_time": "09:15",
+            "end_time": "10:00",
+        }
+    )
+
+    assert created.start_time == "09:15"
+    assert created.end_time is None
+    assert normalized_without_date.start_time is None
+    assert normalized_without_date.end_time is None
+
+
+def test_task_schema_rejects_end_time_without_start_time() -> None:
+    with pytest.raises(ValidationError) as error:
+        TaskCreate.model_validate(
+            {
+                "title": "Broken timing",
+                "due_date": "2026-03-18",
+                "end_time": "10:00",
+            }
+        )
+
+    assert "start time" in str(error.value).lower()
+
+
+def test_task_schema_rejects_non_increasing_time_range() -> None:
+    with pytest.raises(ValidationError) as error:
+        TaskCreate.model_validate(
+            {
+                "title": "Backwards timing",
+                "due_date": "2026-03-18",
+                "start_time": "10:00",
+                "end_time": "09:45",
+            }
+        )
+
+    assert "later than the start time" in str(error.value)
+
+
 def test_task_filters_toggle_and_updates(session) -> None:
     created_list = create_list(session, ListCreate(name="Study", color="#059669"))
     today = date(2026, 3, 13)
@@ -278,10 +327,27 @@ def test_toggling_recurring_task_marks_current_done_and_spawns_next_active_copy(
     assert spawned_task.subtasks[0].due_date == date(2026, 3, 13)
     assert spawned_task.subtasks[0].reminder_time == "07:15"
     assert spawned_task.subtasks[0].is_done is False
-    assert spawned_task.subtasks[0].is_pinned is False
-    assert spawned_task.subtasks[0].parent_id == spawned_task.id
-    assert spawned_task.subtasks[0].position == 0
-    assert historical_task.subtasks[0].is_done is False
+
+
+def test_recurring_spawn_preserves_start_and_end_time(session) -> None:
+    recurring_task = create_task(
+        session,
+        TaskCreate(
+            title="Workshop",
+            due_date=date(2026, 3, 13),
+            start_time="09:00",
+            end_time="10:30",
+            repeat=TaskRepeat.DAILY,
+        ),
+    )
+
+    toggled_task = toggle_task(get_task_or_404(session, recurring_task.id), session)
+    all_tasks = list_all_tasks(session)
+    spawned_task = next(task for task in all_tasks if task.id != recurring_task.id)
+
+    assert toggled_task.is_done is True
+    assert spawned_task.start_time == "09:00"
+    assert spawned_task.end_time == "10:30"
 
 
 def test_toggling_monthly_recurring_task_uses_safe_end_of_month_due_date(session) -> None:

@@ -1,10 +1,11 @@
 import { parseLocalDateString } from "@/lib/date";
 import { descriptionBlocksToText, stripDescriptionBlocks } from "@/lib/task-description";
 import { normalizeCustomRepeatConfig, validateCustomRepeatConfig } from "@/lib/task-repeat";
+import { normalizeTaskTime, validateTaskTimeRange } from "@/lib/task-time";
 import type { TaskCreatePayload, TaskDraft, TaskSubtask, TaskUpdatePayload } from "@/lib/types";
 
 export function validateTaskDraft(
-  draft: Pick<TaskDraft, "title" | "due_date" | "reminder_time" | "repeat" | "repeat_config" | "repeat_until">,
+  draft: Pick<TaskDraft, "title" | "due_date" | "start_time" | "end_time" | "reminder_time" | "repeat" | "repeat_config" | "repeat_until">,
 ): string | null {
   if (!draft.title.trim()) {
     return "Task title is required.";
@@ -42,6 +43,11 @@ export function validateTaskDraft(
     return "Choose a due date before setting a reminder.";
   }
 
+  const taskTimeError = validateTaskTimeRange(draft.due_date, draft.start_time, draft.end_time);
+  if (taskTimeError) {
+    return taskTimeError;
+  }
+
   return null;
 }
 
@@ -56,6 +62,8 @@ function buildNormalizedTaskFields(
     description: descriptionBlocksToText(normalizedBlocks),
     description_blocks: normalizedBlocks,
     due_date: draft.due_date || null,
+    start_time: draft.due_date ? normalizeTaskTime(draft.start_time) : null,
+    end_time: draft.due_date && normalizeTaskTime(draft.start_time) ? normalizeTaskTime(draft.end_time) : null,
     reminder_time: draft.due_date ? draft.reminder_time || null : null,
     repeat_config: draft.repeat === "custom" ? normalizeCustomRepeatConfig(draft.repeat_config) : null,
     repeat_until: draft.repeat === "none" ? null : draft.repeat_until || null,
@@ -84,6 +92,8 @@ export function buildTaskCreatePayloadFromDraft(
           description: descriptionBlocksToText(normalizedBlocks),
           description_blocks: normalizedBlocks,
           due_date: subtask.due_date,
+          start_time: subtask.start_time ?? null,
+          end_time: subtask.end_time ?? null,
           reminder_time: subtask.reminder_time,
           is_done: subtask.is_done,
         };

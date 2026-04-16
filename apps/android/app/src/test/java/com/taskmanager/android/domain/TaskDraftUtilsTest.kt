@@ -158,6 +158,38 @@ class TaskDraftUtilsTest {
     }
 
     @Test
+    fun `task draft validates and serializes start and end time`() {
+        val missingStartError = validateTaskDraft(
+            TaskDraft(
+                title = "Bad end only",
+                dueDate = "2026-03-20",
+                endTime = "10:30",
+            ),
+        )
+        val invalidRangeError = validateTaskDraft(
+            TaskDraft(
+                title = "Backwards time",
+                dueDate = "2026-03-20",
+                startTime = "10:30",
+                endTime = "09:30",
+            ),
+        )
+        val payload = buildTaskUpdatePayloadJson(
+            TaskDraft(
+                title = "Timed task",
+                dueDate = "2026-03-20",
+                startTime = "09:00",
+                endTime = "10:30",
+            ),
+        )
+
+        assertThat(missingStartError).contains("Choose a start time")
+        assertThat(invalidRangeError).contains("End time must be later")
+        assertThat(payload["start_time"]?.jsonPrimitive?.content).isEqualTo("09:00")
+        assertThat(payload["end_time"]?.jsonPrimitive?.content).isEqualTo("10:30")
+    }
+
+    @Test
     fun `custom repeat validation and serialization work end to end`() {
         val invalidWeeklyError = validateTaskDraft(
             TaskDraft(

@@ -13,6 +13,8 @@ function makeDraft(overrides: Partial<TaskDraft> = {}): TaskDraft {
       { kind: "text", text: "" },
     ],
     due_date: "2026-03-13",
+    start_time: "",
+    end_time: "",
     reminder_time: "08:30",
     repeat_config: null,
     repeat_until: "",
@@ -66,6 +68,8 @@ describe("task dialog state helpers", () => {
       description: "Ship the milestone",
       description_blocks: [{ kind: "text", text: "Ship the milestone" }],
       due_date: "2026-03-13",
+      start_time: null,
+      end_time: null,
       reminder_time: "08:30",
       repeat_until: "2026-04-10",
       repeat_config: null,
@@ -81,6 +85,8 @@ describe("task dialog state helpers", () => {
           description: "Summarize fixes",
           description_blocks: [{ kind: "text", text: "Summarize fixes" }],
           due_date: null,
+          start_time: null,
+          end_time: null,
           reminder_time: null,
           is_done: false,
         },
@@ -149,6 +155,8 @@ describe("task dialog state helpers", () => {
         description: null,
         description_blocks: [],
         due_date: null,
+        start_time: null,
+        end_time: null,
         reminder_time: null,
         is_done: false,
       },
@@ -179,6 +187,8 @@ describe("task dialog state helpers", () => {
       description: "Ship the milestone",
       description_blocks: [{ kind: "text", text: "Ship the milestone" }],
       due_date: "2026-03-13",
+      start_time: null,
+      end_time: null,
       reminder_time: "08:30",
       repeat_until: "2026-04-10",
       repeat_config: null,
@@ -201,6 +211,20 @@ describe("task dialog state helpers", () => {
     expect(validateTaskDraft(makeDraft({ due_date: "", repeat: "none", reminder_time: "09:00" }))).toBe(
       "Choose a due date before setting a reminder.",
     );
+  });
+
+  it("validates task time ranges and serializes them", () => {
+    expect(validateTaskDraft(makeDraft({ start_time: "", end_time: "09:30" }))).toBe(
+      "Choose a start time before setting an end time.",
+    );
+    expect(validateTaskDraft(makeDraft({ start_time: "10:00", end_time: "09:30" }))).toBe(
+      "End time must be later than the start time.",
+    );
+
+    expect(buildTaskUpdatePayloadFromDraft(makeDraft({ start_time: "09:00", end_time: "10:30" }))).toMatchObject({
+      start_time: "09:00",
+      end_time: "10:30",
+    });
   });
 
   it("validates and serializes custom repeat configuration", () => {

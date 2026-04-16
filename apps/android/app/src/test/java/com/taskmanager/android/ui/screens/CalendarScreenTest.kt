@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
@@ -40,7 +41,7 @@ class CalendarScreenTest {
                 CalendarScreen(
                     tasks = listOf(
                         testTaskItem(id = 1, title = "Gym", dueDate = "2026-03-15", listId = 7),
-                        testTaskItem(id = 2, title = "Review", dueDate = "2026-03-16", reminderTime = "09:00"),
+                        testTaskItem(id = 2, title = "Review", dueDate = "2026-03-16", startTime = "09:00"),
                     ),
                     lists = listOf(testListItem(id = 7, name = "Health", color = "#FF8A00")),
                     todayString = "2026-03-15",
@@ -130,6 +131,40 @@ class CalendarScreenTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         composeRule.runOnIdle {
             assertThat(toggledTaskId).isEqualTo(8)
+        }
+    }
+
+    @Test
+    fun `calendar agenda renders time pills for timed tasks`() {
+        composeRule.setContent {
+            TaskManagerTheme {
+                var selectedDate by remember { mutableStateOf(LocalDate.parse("2026-03-15")) }
+                var visibleMonth by remember { mutableStateOf(YearMonth.of(2026, 3)) }
+
+                CalendarScreen(
+                    tasks = listOf(
+                        testTaskItem(
+                            id = 21,
+                            title = "Design sync",
+                            dueDate = "2026-03-15",
+                            startTime = "09:00",
+                            endTime = "10:30",
+                        ),
+                    ),
+                    lists = emptyList(),
+                    todayString = "2026-03-15",
+                    visibleMonth = visibleMonth,
+                    selectedDate = selectedDate,
+                    onSelectDate = { selectedDate = it },
+                    onChangeMonth = { visibleMonth = it },
+                    onToggleTask = {},
+                    onOpenTask = {},
+                )
+            }
+        }
+
+        composeRule.runOnIdle {
+            assertThat(composeRule.onAllNodesWithText("09:00–10:30", useUnmergedTree = true).fetchSemanticsNodes()).isNotEmpty()
         }
     }
 }

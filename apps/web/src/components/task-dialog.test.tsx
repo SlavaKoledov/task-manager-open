@@ -11,6 +11,8 @@ function makeDraft(overrides: Partial<TaskDraft> = {}): TaskDraft {
     title: "Plan launch",
     description_blocks: createEmptyDescription(),
     due_date: "",
+    start_time: "",
+    end_time: "",
     reminder_time: "",
     repeat_config: null,
     repeat_until: "",

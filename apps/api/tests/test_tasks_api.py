@@ -82,6 +82,23 @@ def test_task_endpoints_round_trip_custom_repeat_configuration(session) -> None:
     }
 
 
+def test_task_endpoints_round_trip_start_and_end_time(session) -> None:
+    payload = serialize_task(
+        task_routes.create_task(
+            TaskCreate(
+                title="Timed task",
+                due_date="2026-03-18",
+                start_time="09:00",
+                end_time="10:15",
+            ),
+            session,
+        )
+    )
+
+    assert payload["start_time"] == "09:00"
+    assert payload["end_time"] == "10:15"
+
+
 def test_task_update_schema_rejects_create_only_fields() -> None:
     with pytest.raises(ValidationError) as error:
         TaskUpdate.model_validate(
@@ -146,6 +163,71 @@ def test_update_task_endpoint_accepts_update_payload_without_create_only_fields(
     assert payload["priority"] == "urgent_important"
     assert payload["is_pinned"] is True
     assert payload["repeat"] == "weekly"
+
+
+def test_update_task_endpoint_validates_and_normalizes_task_times(session) -> None:
+    task = task_routes.create_task(
+        TaskCreate(
+            title="Editable timing",
+            due_date="2026-03-13",
+            start_time="08:30",
+        ),
+        session,
+    )
+
+    payload = serialize_task(
+        task_routes.update_task(
+            task.id,
+            TaskUpdate(
+                start_time="09:00",
+                end_time="11:30",
+            ),
+            session,
+        )
+    )
+
+    assert payload["start_time"] == "09:00"
+    assert payload["end_time"] == "11:30"
+
+    with pytest.raises(HTTPException) as error:
+        task_routes.update_task(
+            task.id,
+            TaskUpdate(end_time="08:00"),
+            session,
+        )
+
+    assert error.value.status_code == 400
+    assert error.value.detail == "End time must be later than the start time."
+
+    untimed_task = task_routes.create_task(
+        TaskCreate(
+            title="Untimed task",
+            due_date="2026-03-13",
+        ),
+        session,
+    )
+
+    with pytest.raises(HTTPException) as missing_start_error:
+        task_routes.update_task(
+            untimed_task.id,
+            TaskUpdate(end_time="08:00"),
+            session,
+        )
+
+    assert missing_start_error.value.status_code == 400
+    assert missing_start_error.value.detail == "End time requires a start time."
+
+    cleared_payload = serialize_task(
+        task_routes.update_task(
+            task.id,
+            TaskUpdate(due_date=None),
+            session,
+        )
+    )
+
+    assert cleared_payload["due_date"] is None
+    assert cleared_payload["start_time"] is None
+    assert cleared_payload["end_time"] is None
 
 
 def test_create_task_endpoint_can_create_task_with_nested_subtasks(session) -> None:

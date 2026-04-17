@@ -26,10 +26,7 @@ fun compareTasks(left: TaskItem, right: TaskItem): Int {
     if (left.isDone != right.isDone) return if (left.isDone) 1 else -1
     val priorityDelta = (priorityOrder[left.priority] ?: 4) - (priorityOrder[right.priority] ?: 4)
     if (priorityDelta != 0) return priorityDelta
-    if (left.position != right.position) return left.position - right.position
-    val createdAtDelta = right.createdAt.compareTo(left.createdAt)
-    if (createdAtDelta != 0) return createdAtDelta
-    return right.id - left.id
+    return compareTaskItemsByTime(left, right)
 }
 
 fun filterTasksForView(

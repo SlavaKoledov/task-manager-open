@@ -76,6 +76,29 @@ class TaskCalendarTest {
     }
 
     @Test
+    fun `compare calendar occurrences breaks timed ties by end time before untimed tasks`() {
+        val occurrences = listOf(
+            CalendarTaskOccurrence(
+                task = testTaskItem(id = 1, title = "Untimed", dueDate = "2026-03-18"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(id = 2, title = "Long", dueDate = "2026-03-18", startTime = "09:00", endTime = "10:00"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(id = 3, title = "Short", dueDate = "2026-03-18", startTime = "09:00", endTime = "09:30"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+        ).sortedWith(::compareCalendarOccurrences)
+
+        assertThat(occurrences.map { it.task.title }).containsExactly("Short", "Long", "Untimed").inOrder()
+    }
+
+    @Test
     fun `format task time range supports single times and ranges`() {
         assertThat(formatTaskTimeRange("09:00", null)).isEqualTo("09:00")
         assertThat(formatTaskTimeRange("09:00", "10:30")).isEqualTo("09:00–10:30")

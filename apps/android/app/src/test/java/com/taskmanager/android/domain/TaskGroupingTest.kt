@@ -111,6 +111,61 @@ class TaskGroupingTest {
     }
 
     @Test
+    fun `group tasks with done sorts timed tasks before untimed tasks within sections`() {
+        val grouped = groupTasksWithDone(
+            listOf(
+                testTaskItem(
+                    id = 1,
+                    title = "Untimed",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    position = 0,
+                ),
+                testTaskItem(
+                    id = 2,
+                    title = "Late",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    startTime = "11:00",
+                    position = 1,
+                ),
+                testTaskItem(
+                    id = 3,
+                    title = "Early short",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    startTime = "09:00",
+                    endTime = "09:30",
+                    position = 2,
+                ),
+                testTaskItem(
+                    id = 4,
+                    title = "Early long",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    startTime = "09:00",
+                    endTime = "10:00",
+                    position = 3,
+                ),
+                testTaskItem(
+                    id = 5,
+                    title = "Done timed",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    isDone = true,
+                    startTime = "10:00",
+                    position = 4,
+                ),
+                testTaskItem(
+                    id = 6,
+                    title = "Done untimed",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    isDone = true,
+                    position = 5,
+                ),
+            ),
+        )
+
+        assertThat(grouped.sections.single().tasks.map { it.id }).containsExactly(3, 4, 2, 1).inOrder()
+        assertThat(grouped.doneTasks.map { it.id }).containsExactly(5, 6).inOrder()
+    }
+
+    @Test
     fun `task progress rounds instead of truncating`() {
         val summary = getSubtaskProgressSummary(done = 2, total = 3)
 

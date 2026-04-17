@@ -1,5 +1,7 @@
 package com.taskmanager.android.domain
 
+import com.taskmanager.android.model.TaskItem
+
 private val taskTimePattern = Regex("""^(\d{2}):(\d{2})$""")
 
 fun normalizeTaskTime(value: String?): String? {
@@ -90,4 +92,27 @@ fun compareTaskStartTimes(
     }
 
     return 0
+}
+
+fun compareTaskItemsByTime(left: TaskItem, right: TaskItem): Int {
+    val timeDelta = compareTaskStartTimes(
+        left.startTime,
+        right.startTime,
+        left.endTime,
+        right.endTime,
+    )
+    if (timeDelta != 0) {
+        return timeDelta
+    }
+
+    if (left.position != right.position) {
+        return left.position - right.position
+    }
+
+    val createdAtDelta = right.createdAt.compareTo(left.createdAt)
+    if (createdAtDelta != 0) {
+        return createdAtDelta
+    }
+
+    return right.id - left.id
 }

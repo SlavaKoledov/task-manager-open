@@ -190,8 +190,24 @@ export function compareTaskStartTimes(
 }
 
 type TimeOrderedTask = Pick<TaskItem, "start_time" | "end_time" | "position" | "created_at" | "id">;
+type ScheduledTask = TimeOrderedTask & Pick<TaskItem, "due_date">;
 
-export function compareTaskItemsByTime<T extends TimeOrderedTask>(left: T, right: T): number {
+export function compareTaskItemsByTime<T extends ScheduledTask>(left: T, right: T): number {
+  if (left.due_date !== null && right.due_date === null) {
+    return -1;
+  }
+
+  if (left.due_date === null && right.due_date !== null) {
+    return 1;
+  }
+
+  if (left.due_date !== null && right.due_date !== null) {
+    const dueDateDelta = left.due_date.localeCompare(right.due_date);
+    if (dueDateDelta !== 0) {
+      return dueDateDelta;
+    }
+  }
+
   const timeDelta = compareTaskStartTimes(left.start_time, right.start_time, left.end_time, right.end_time);
   if (timeDelta !== 0) {
     return timeDelta;
@@ -201,10 +217,10 @@ export function compareTaskItemsByTime<T extends TimeOrderedTask>(left: T, right
     return left.position - right.position;
   }
 
-  const createdAtDelta = right.created_at.localeCompare(left.created_at);
+  const createdAtDelta = left.created_at.localeCompare(right.created_at);
   if (createdAtDelta !== 0) {
     return createdAtDelta;
   }
 
-  return right.id - left.id;
+  return left.id - right.id;
 }

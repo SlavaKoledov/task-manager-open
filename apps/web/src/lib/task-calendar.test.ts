@@ -178,8 +178,8 @@ describe("task calendar helpers", () => {
       })),
     ).toEqual([
       { id: 2, date: "2026-03-09", recurring: false },
-      { id: 2, date: "2026-03-10", recurring: true },
       { id: 1, date: "2026-03-10", recurring: false },
+      { id: 2, date: "2026-03-10", recurring: true },
       { id: 2, date: "2026-03-11", recurring: true },
       { id: 2, date: "2026-03-12", recurring: true },
     ]);
@@ -306,7 +306,7 @@ describe("task calendar helpers", () => {
     ]);
   });
 
-  it("groups and sorts occurrences by task start time then title", () => {
+  it("groups and sorts occurrences by time and fallback ordering inside a day", () => {
     const occurrencesByDate = groupTaskOccurrencesByDate([
       {
         task: makeTask({ id: 2, title: "No time", due_date: "2026-03-10" }),
@@ -315,7 +315,14 @@ describe("task calendar helpers", () => {
         isRecurring: false,
       },
       {
-        task: makeTask({ id: 3, title: "Afternoon", due_date: "2026-03-10", start_time: "14:00" }),
+        task: makeTask({
+          id: 3,
+          title: "Alpha",
+          due_date: "2026-03-10",
+          start_time: "14:00",
+          position: 1,
+          created_at: "2026-03-10T09:00:00Z",
+        }),
         date: new Date(2026, 2, 10),
         dateString: "2026-03-10",
         isRecurring: false,
@@ -326,10 +333,36 @@ describe("task calendar helpers", () => {
         dateString: "2026-03-10",
         isRecurring: false,
       },
+      {
+        task: makeTask({
+          id: 4,
+          title: "Zulu",
+          due_date: "2026-03-10",
+          start_time: "14:00",
+          position: 1,
+          created_at: "2026-03-10T07:00:00Z",
+        }),
+        date: new Date(2026, 2, 10),
+        dateString: "2026-03-10",
+        isRecurring: false,
+      },
+      {
+        task: makeTask({
+          id: 5,
+          title: "Beta",
+          due_date: "2026-03-10",
+          start_time: "14:00",
+          position: 1,
+          created_at: "2026-03-10T08:00:00Z",
+        }),
+        date: new Date(2026, 2, 10),
+        dateString: "2026-03-10",
+        isRecurring: false,
+      },
     ]);
 
     const sortedTitles = [...(occurrencesByDate.get("2026-03-10") ?? [])].sort(compareTaskOccurrences).map((occurrence) => occurrence.task.title);
 
-    expect(sortedTitles).toEqual(["Morning", "Afternoon", "No time"]);
+    expect(sortedTitles).toEqual(["Morning", "Zulu", "Beta", "Alpha", "No time"]);
   });
 });

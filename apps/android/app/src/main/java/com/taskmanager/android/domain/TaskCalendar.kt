@@ -253,9 +253,13 @@ fun compareCalendarOccurrences(left: CalendarTaskOccurrence, right: CalendarTask
         return timeDelta
     }
 
-    val titleDelta = left.task.title.compareTo(right.task.title)
-    if (titleDelta != 0) {
-        return titleDelta
+    if (left.task.position != right.task.position) {
+        return left.task.position - right.task.position
+    }
+
+    val createdAtDelta = left.task.createdAt.compareTo(right.task.createdAt)
+    if (createdAtDelta != 0) {
+        return createdAtDelta
     }
 
     return left.task.id.compareTo(right.task.id)

@@ -95,6 +95,19 @@ fun compareTaskStartTimes(
 }
 
 fun compareTaskItemsByTime(left: TaskItem, right: TaskItem): Int {
+    if (left.dueDate != null && right.dueDate == null) {
+        return -1
+    }
+    if (left.dueDate == null && right.dueDate != null) {
+        return 1
+    }
+    if (left.dueDate != null && right.dueDate != null) {
+        val dueDateDelta = left.dueDate.compareTo(right.dueDate)
+        if (dueDateDelta != 0) {
+            return dueDateDelta
+        }
+    }
+
     val timeDelta = compareTaskStartTimes(
         left.startTime,
         right.startTime,
@@ -109,10 +122,10 @@ fun compareTaskItemsByTime(left: TaskItem, right: TaskItem): Int {
         return left.position - right.position
     }
 
-    val createdAtDelta = right.createdAt.compareTo(left.createdAt)
+    val createdAtDelta = left.createdAt.compareTo(right.createdAt)
     if (createdAtDelta != 0) {
         return createdAtDelta
     }
 
-    return right.id - left.id
+    return left.id - right.id
 }

@@ -111,19 +111,21 @@ class TaskGroupingTest {
     }
 
     @Test
-    fun `group tasks with done sorts timed tasks before untimed tasks within sections`() {
+    fun `group tasks with done sorts by due date first and then by time within sections`() {
         val grouped = groupTasksWithDone(
             listOf(
                 testTaskItem(
                     id = 1,
-                    title = "Untimed",
+                    title = "Earlier date",
                     priority = TaskPriority.URGENT_IMPORTANT,
+                    dueDate = "2026-03-11",
                     position = 0,
                 ),
                 testTaskItem(
                     id = 2,
                     title = "Late",
                     priority = TaskPriority.URGENT_IMPORTANT,
+                    dueDate = "2026-03-12",
                     startTime = "11:00",
                     position = 1,
                 ),
@@ -131,38 +133,45 @@ class TaskGroupingTest {
                     id = 3,
                     title = "Early short",
                     priority = TaskPriority.URGENT_IMPORTANT,
+                    dueDate = "2026-03-12",
                     startTime = "09:00",
                     endTime = "09:30",
                     position = 2,
                 ),
                 testTaskItem(
                     id = 4,
-                    title = "Early long",
+                    title = "Same date untimed",
                     priority = TaskPriority.URGENT_IMPORTANT,
-                    startTime = "09:00",
-                    endTime = "10:00",
+                    dueDate = "2026-03-12",
                     position = 3,
                 ),
                 testTaskItem(
                     id = 5,
-                    title = "Done timed",
+                    title = "No date",
                     priority = TaskPriority.URGENT_IMPORTANT,
-                    isDone = true,
-                    startTime = "10:00",
                     position = 4,
                 ),
                 testTaskItem(
                     id = 6,
+                    title = "Done timed",
+                    priority = TaskPriority.URGENT_IMPORTANT,
+                    isDone = true,
+                    dueDate = "2026-03-10",
+                    startTime = "10:00",
+                    position = 5,
+                ),
+                testTaskItem(
+                    id = 7,
                     title = "Done untimed",
                     priority = TaskPriority.URGENT_IMPORTANT,
                     isDone = true,
-                    position = 5,
+                    position = 6,
                 ),
             ),
         )
 
-        assertThat(grouped.sections.single().tasks.map { it.id }).containsExactly(3, 4, 2, 1).inOrder()
-        assertThat(grouped.doneTasks.map { it.id }).containsExactly(5, 6).inOrder()
+        assertThat(grouped.sections.single().tasks.map { it.id }).containsExactly(1, 3, 2, 4, 5).inOrder()
+        assertThat(grouped.doneTasks.map { it.id }).containsExactly(6, 7).inOrder()
     }
 
     @Test

@@ -47,8 +47,8 @@ class TaskCalendarTest {
             Triple(2, "2026-03-15", false),
             Triple(2, "2026-03-16", true),
             Triple(2, "2026-03-17", true),
-            Triple(2, "2026-03-18", true),
             Triple(1, "2026-03-18", false),
+            Triple(2, "2026-03-18", true),
         ).inOrder()
     }
 
@@ -96,6 +96,57 @@ class TaskCalendarTest {
         ).sortedWith(::compareCalendarOccurrences)
 
         assertThat(occurrences.map { it.task.title }).containsExactly("Short", "Long", "Untimed").inOrder()
+    }
+
+    @Test
+    fun `compare calendar occurrences uses fallback ordering after time`() {
+        val occurrences = listOf(
+            CalendarTaskOccurrence(
+                task = testTaskItem(id = 1, title = "No time", dueDate = "2026-03-18"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(
+                    id = 2,
+                    title = "Alpha",
+                    dueDate = "2026-03-18",
+                    startTime = "14:00",
+                    position = 1,
+                ).copy(createdAt = "2026-03-18T09:00:00Z"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(
+                    id = 5,
+                    title = "Beta",
+                    dueDate = "2026-03-18",
+                    startTime = "14:00",
+                    position = 1,
+                ).copy(createdAt = "2026-03-18T08:00:00Z"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(
+                    id = 4,
+                    title = "Zulu",
+                    dueDate = "2026-03-18",
+                    startTime = "14:00",
+                    position = 1,
+                ).copy(createdAt = "2026-03-18T07:00:00Z"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+            CalendarTaskOccurrence(
+                task = testTaskItem(id = 3, title = "Morning", dueDate = "2026-03-18", startTime = "09:00"),
+                date = LocalDate.parse("2026-03-18"),
+                isRecurring = false,
+            ),
+        ).sortedWith(::compareCalendarOccurrences)
+
+        assertThat(occurrences.map { it.task.title }).containsExactly("Morning", "Zulu", "Beta", "Alpha", "No time").inOrder()
     }
 
     @Test

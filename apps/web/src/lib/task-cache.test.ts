@@ -55,17 +55,41 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
 }
 
 describe("task cache move sync", () => {
-  it("reorders timed tasks ahead of untimed ones when caches are updated", () => {
+  it("reorders tasks by due date first and then by time when caches are updated", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData<TaskItem[]>(["tasks", "all"], [
-      makeTask({ id: 1, title: "Untimed", position: 0 }),
-      makeTask({ id: 2, title: "Late", start_time: "11:00", position: 1 }),
-      makeTask({ id: 3, title: "Early", start_time: "09:00", end_time: "09:30", position: 2 }),
+      makeTask({ id: 1, title: "No date", due_date: null, position: 0 }),
+      makeTask({ id: 2, title: "Later timed", due_date: "2026-03-16", start_time: "11:00", position: 1 }),
+      makeTask({
+        id: 3,
+        title: "Earlier timed newer",
+        due_date: "2026-03-16",
+        start_time: "09:00",
+        end_time: "09:30",
+        position: 0,
+        created_at: "2026-03-15T12:05:00Z",
+      }),
+      makeTask({
+        id: 4,
+        title: "Earlier date",
+        due_date: "2026-03-15",
+        position: 2,
+      }),
+      makeTask({
+        id: 5,
+        title: "Earlier timed older",
+        due_date: "2026-03-16",
+        start_time: "09:00",
+        end_time: "09:30",
+        position: 0,
+        created_at: "2026-03-15T12:00:00Z",
+      }),
+      makeTask({ id: 6, title: "Same date untimed", due_date: "2026-03-16", position: 3 }),
     ]);
 
-    upsertTaskInCaches(queryClient, makeTask({ id: 1, title: "Untimed", position: 0 }));
+    upsertTaskInCaches(queryClient, makeTask({ id: 1, title: "No date", due_date: null, position: 0 }));
 
-    expect(queryClient.getQueryData<TaskItem[]>(["tasks", "all"])?.map((task) => task.id)).toEqual([3, 2, 1]);
+    expect(queryClient.getQueryData<TaskItem[]>(["tasks", "all"])?.map((task) => task.id)).toEqual([4, 5, 3, 2, 6, 1]);
   });
 
   it("removes moved top-level tasks and updates affected parents", () => {

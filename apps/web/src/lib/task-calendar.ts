@@ -262,9 +262,13 @@ export function compareTaskOccurrences(left: TaskOccurrence, right: TaskOccurren
     return timeDelta;
   }
 
-  const titleDelta = left.task.title.localeCompare(right.task.title);
-  if (titleDelta !== 0) {
-    return titleDelta;
+  if (left.task.position !== right.task.position) {
+    return left.task.position - right.task.position;
+  }
+
+  const createdAtDelta = left.task.created_at.localeCompare(right.task.created_at);
+  if (createdAtDelta !== 0) {
+    return createdAtDelta;
   }
 
   return left.task.id - right.task.id;

@@ -166,17 +166,19 @@ describe("task grouping helpers", () => {
     expect(grouped.doneCount).toBe(1);
   });
 
-  it("sorts timed tasks before untimed ones within the same section", () => {
+  it("sorts tasks by due date first, then time within the same section", () => {
     const grouped = groupTasksWithDone([
-      makeTask(1, null, { priority: "urgent_important", position: 0 }),
-      makeTask(2, null, { priority: "urgent_important", start_time: "11:00", position: 1 }),
-      makeTask(3, null, { priority: "urgent_important", start_time: "09:00", end_time: "09:30", position: 2 }),
-      makeTask(4, null, { priority: "urgent_important", is_done: true, start_time: "10:00", position: 3 }),
-      makeTask(5, null, { priority: "urgent_important", is_done: true, position: 4 }),
+      makeTask(1, "2026-03-11", { priority: "urgent_important", position: 0 }),
+      makeTask(2, "2026-03-12", { priority: "urgent_important", start_time: "11:00", position: 1 }),
+      makeTask(3, "2026-03-12", { priority: "urgent_important", start_time: "09:00", end_time: "09:30", position: 2 }),
+      makeTask(4, "2026-03-12", { priority: "urgent_important", position: 3 }),
+      makeTask(5, null, { priority: "urgent_important", position: 4 }),
+      makeTask(6, "2026-03-10", { priority: "urgent_important", is_done: true, start_time: "10:00", position: 5 }),
+      makeTask(7, null, { priority: "urgent_important", is_done: true, position: 6 }),
     ]);
 
-    expect(grouped.sections[0]?.tasks.map((task) => task.id)).toEqual([3, 2, 1]);
-    expect(grouped.doneTasks.map((task) => task.id)).toEqual([4, 5]);
+    expect(grouped.sections[0]?.tasks.map((task) => task.id)).toEqual([1, 3, 2, 4, 5]);
+    expect(grouped.doneTasks.map((task) => task.id)).toEqual([6, 7]);
   });
 
   it("preserves task order while splitting into All view columns and sections", () => {

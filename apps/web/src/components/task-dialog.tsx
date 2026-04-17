@@ -38,6 +38,7 @@ type TaskDialogProps = {
   onOpenChange: (open: boolean) => void;
   onCreateTask: (payload: TaskCreatePayload) => Promise<void>;
   onUpdateTask: (task: TaskItem, payload: TaskUpdatePayload) => Promise<TaskItem>;
+  onToggleTask: (task: TaskItem) => Promise<TaskItem>;
   onDelete?: (task: TaskItem) => Promise<void>;
   onCreateSubtask: (task: TaskItem, title: string) => Promise<TaskSubtask>;
   onUpdateSubtask: (subtask: TaskSubtask, payload: TaskUpdatePayload) => Promise<TaskSubtask>;
@@ -92,6 +93,7 @@ export function TaskDialog({
   onOpenChange,
   onCreateTask,
   onUpdateTask,
+  onToggleTask,
   onDelete,
   onCreateSubtask,
   onUpdateSubtask,
@@ -170,7 +172,16 @@ export function TaskDialog({
 
     try {
       if (task) {
-        await onUpdateTask(task, buildTaskUpdatePayloadFromDraft(draft));
+        const updatePayload = buildTaskUpdatePayloadFromDraft(draft);
+        const shouldToggleTask = draft.is_done !== task.is_done;
+
+        if (shouldToggleTask) {
+          const { is_done: _ignored, ...nonCompletionPayload } = updatePayload;
+          const updatedTask = await onUpdateTask(task, nonCompletionPayload);
+          await onToggleTask(updatedTask);
+        } else {
+          await onUpdateTask(task, updatePayload);
+        }
       } else {
         await onCreateTask(buildTaskCreatePayloadFromDraft(draft, undefined, createModeSubtasks));
       }

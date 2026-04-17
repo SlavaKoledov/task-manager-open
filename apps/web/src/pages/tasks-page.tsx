@@ -891,6 +891,7 @@ export function TasksPage({
         onOpenChange={closeTaskDialog}
         onCreateTask={handleTaskCreate}
         onUpdateTask={handleTaskUpdate}
+        onToggleTask={handleTaskToggle}
         onDelete={handleTaskDelete}
         onCreateSubtask={handleCreateSubtask}
         onUpdateSubtask={handleUpdateSubtask}

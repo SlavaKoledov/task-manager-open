@@ -934,6 +934,20 @@ export function CalendarPage({
     [editingTask?.id, queryClient],
   );
 
+  const handleTaskToggle = useCallback(
+    async (task: TaskItem) => {
+      const updatedTask = await toggleTask(task.id);
+      upsertTaskInCaches(queryClient, updatedTask);
+
+      if (task.repeat !== "none" && !task.is_done && updatedTask.is_done) {
+        await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      }
+
+      return updatedTask;
+    },
+    [queryClient],
+  );
+
   const handleTaskDelete = useCallback(
     async (task: TaskItem) => {
       await deleteTask(task.id);
@@ -1079,6 +1093,7 @@ export function CalendarPage({
         onOpenChange={closeTaskDialog}
         onCreateTask={handleTaskCreate}
         onUpdateTask={handleTaskUpdate}
+        onToggleTask={handleTaskToggle}
         onDelete={handleTaskDelete}
         onCreateSubtask={handleCreateSubtask}
         onUpdateSubtask={handleUpdateSubtask}

@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 
 import { TaskDialog } from "@/components/task-dialog";
 import { createEmptyDescription } from "@/lib/task-description";
-import type { ListItem, TaskCreatePayload, TaskDraft, TaskItem, TaskSubtask } from "@/lib/types";
+import type { ListItem, TaskCreatePayload, TaskDraft, TaskItem, TaskSubtask, TaskUpdatePayload } from "@/lib/types";
 
 function makeDraft(overrides: Partial<TaskDraft> = {}): TaskDraft {
   return {
@@ -77,6 +77,8 @@ function renderTaskDialog({
   defaultDraft = makeDraft(),
   subtasksCollapsed = false,
   onCreateTask = async () => undefined,
+  onUpdateTask = async (currentTask: TaskItem, payload: TaskUpdatePayload) => ({ ...currentTask, ...payload }),
+  onToggleTask = async (currentTask: TaskItem) => ({ ...currentTask, is_done: !currentTask.is_done }),
   onCreateSubtask = async (_task: TaskItem, title: string) => makeSubtask({ title }),
   onToggleSubtasks = () => undefined,
 }: {
@@ -84,6 +86,8 @@ function renderTaskDialog({
   defaultDraft?: TaskDraft;
   subtasksCollapsed?: boolean;
   onCreateTask?: (payload: TaskCreatePayload) => Promise<void>;
+  onUpdateTask?: (task: TaskItem, payload: TaskUpdatePayload) => Promise<TaskItem>;
+  onToggleTask?: (task: TaskItem) => Promise<TaskItem>;
   onCreateSubtask?: (task: TaskItem, title: string) => Promise<TaskSubtask>;
   onToggleSubtasks?: (taskId: number) => void;
 }) {
@@ -98,7 +102,8 @@ function renderTaskDialog({
       subtasksCollapsed={subtasksCollapsed}
       onOpenChange={() => undefined}
       onCreateTask={onCreateTask}
-      onUpdateTask={async (nextTask) => nextTask}
+      onUpdateTask={onUpdateTask}
+      onToggleTask={onToggleTask}
       onCreateSubtask={onCreateSubtask}
       onUpdateSubtask={async (subtask) => subtask}
       onToggleSubtask={async (subtask) => ({ ...subtask, is_done: !subtask.is_done })}
@@ -206,5 +211,34 @@ describe("TaskDialog", () => {
     fireEvent.click(await screen.findByText("Show subtasks"));
 
     await waitFor(() => expect(screen.getByDisplayValue("Write release notes")).not.toBeNull());
+  });
+
+  it("uses toggle semantics when completing a non-recurring task from the dialog", async () => {
+    const task = makeTask({ repeat: "none" });
+    const onUpdateTask = vi.fn(async (currentTask: TaskItem, payload: TaskUpdatePayload) => ({ ...currentTask, ...payload }));
+    const onToggleTask = vi.fn(async (currentTask: TaskItem) => ({ ...currentTask, is_done: !currentTask.is_done }));
+
+    renderTaskDialog({ task, onUpdateTask, onToggleTask });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Toggle task status" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(onToggleTask).toHaveBeenCalledTimes(1));
+    expect(onUpdateTask).toHaveBeenCalledTimes(1);
+    expect(onUpdateTask.mock.calls[0]?.[1]).not.toHaveProperty("is_done");
+  });
+
+  it("does not trigger toggle when editing a recurring task without changing done state", async () => {
+    const task = makeTask({ repeat: "weekly", due_date: "2026-03-22" });
+    const onUpdateTask = vi.fn(async (currentTask: TaskItem, payload: TaskUpdatePayload) => ({ ...currentTask, ...payload }));
+    const onToggleTask = vi.fn(async (currentTask: TaskItem) => ({ ...currentTask, is_done: !currentTask.is_done }));
+
+    renderTaskDialog({ task, onUpdateTask, onToggleTask });
+
+    fireEvent.change(screen.getByDisplayValue("Plan launch"), { target: { value: "Plan updated launch" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(onUpdateTask).toHaveBeenCalledTimes(1));
+    expect(onToggleTask).not.toHaveBeenCalled();
   });
 });

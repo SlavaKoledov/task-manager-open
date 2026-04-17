@@ -1,5 +1,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
+import { compareTaskItemsByTime } from "@/lib/task-time";
 import type { TaskItem, TaskMoveResult, TaskPriority, TaskSubtask } from "@/lib/types";
 
 const TASK_PRIORITY_ORDER: Record<TaskPriority, number> = {
@@ -30,16 +31,7 @@ function compareTasks(left: TaskItem, right: TaskItem) {
     return priorityDelta;
   }
 
-  if (left.position !== right.position) {
-    return left.position - right.position;
-  }
-
-  const createdAtDelta = right.created_at.localeCompare(left.created_at);
-  if (createdAtDelta !== 0) {
-    return createdAtDelta;
-  }
-
-  return right.id - left.id;
+  return compareTaskItemsByTime(left, right);
 }
 
 function compareSubtasks(left: TaskSubtask, right: TaskSubtask) {

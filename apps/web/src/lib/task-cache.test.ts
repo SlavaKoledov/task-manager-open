@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 
-import { applyTaskMoveResultInCaches } from "@/lib/task-cache";
+import { applyTaskMoveResultInCaches, upsertTaskInCaches } from "@/lib/task-cache";
 import type { TaskItem, TaskMoveResult, TaskSubtask } from "@/lib/types";
 
 function makeSubtask(overrides: Partial<TaskSubtask> = {}): TaskSubtask {
@@ -10,6 +10,8 @@ function makeSubtask(overrides: Partial<TaskSubtask> = {}): TaskSubtask {
     description: null,
     description_blocks: [{ kind: "text", text: "" }],
     due_date: null,
+    start_time: null,
+    end_time: null,
     reminder_time: null,
     repeat_config: null,
     repeat_until: null,
@@ -33,6 +35,8 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
     description: null,
     description_blocks: [{ kind: "text", text: "" }],
     due_date: "2026-03-15",
+    start_time: null,
+    end_time: null,
     reminder_time: null,
     repeat_config: null,
     repeat_until: null,
@@ -51,6 +55,19 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
 }
 
 describe("task cache move sync", () => {
+  it("reorders timed tasks ahead of untimed ones when caches are updated", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<TaskItem[]>(["tasks", "all"], [
+      makeTask({ id: 1, title: "Untimed", position: 0 }),
+      makeTask({ id: 2, title: "Late", start_time: "11:00", position: 1 }),
+      makeTask({ id: 3, title: "Early", start_time: "09:00", end_time: "09:30", position: 2 }),
+    ]);
+
+    upsertTaskInCaches(queryClient, makeTask({ id: 1, title: "Untimed", position: 0 }));
+
+    expect(queryClient.getQueryData<TaskItem[]>(["tasks", "all"])?.map((task) => task.id)).toEqual([3, 2, 1]);
+  });
+
   it("removes moved top-level tasks and updates affected parents", () => {
     const queryClient = new QueryClient();
     const movedTask = makeTask({ id: 300, title: "Dragged task", due_date: "2026-03-15", list_id: 8 });

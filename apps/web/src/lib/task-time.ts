@@ -1,4 +1,9 @@
+import type { TaskItem } from "@/lib/types";
+
 const TASK_TIME_PATTERN = /^(\d{2}):(\d{2})$/;
+const TASK_TIME_INPUT_PATTERN = /^(\d{1,2}):(\d{2})$/;
+const TASK_TIME_COMPACT_INPUT_PATTERN = /^(\d{3,4})$/;
+const TASK_TIME_12_HOUR_INPUT_PATTERN = /^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/;
 
 export function normalizeTaskTime(value: string | null | undefined): string | null {
   if (!value) {
@@ -22,6 +27,86 @@ export function normalizeTaskTime(value: string | null | undefined): string | nu
   }
 
   return cleaned;
+}
+
+export function sanitizeTaskTimeInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.includes(":")) {
+    const [rawHours, rawMinutes = ""] = trimmed.split(":", 2);
+    const hours = rawHours.replace(/\D/g, "").slice(0, 2);
+    const minutes = rawMinutes.replace(/\D/g, "").slice(0, 2);
+
+    if (!hours) {
+      return "";
+    }
+
+    return rawMinutes.length > 0 || trimmed.endsWith(":") ? `${hours}:${minutes}` : hours;
+  }
+
+  const digits = trimmed.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) {
+    return digits;
+  }
+
+  if (digits.length === 3) {
+    return `${digits.slice(0, 1)}:${digits.slice(1)}`;
+  }
+
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+export function normalizeTaskTimeInput(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = value.trim();
+  if (!cleaned) {
+    return null;
+  }
+
+  const twelveHourMatch = TASK_TIME_12_HOUR_INPUT_PATTERN.exec(cleaned);
+  if (twelveHourMatch) {
+    const hours = Number(twelveHourMatch[1]);
+    const minutes = Number(twelveHourMatch[2]);
+    const meridiem = twelveHourMatch[3].toLowerCase();
+
+    if (hours < 1 || hours > 12 || minutes > 59) {
+      return null;
+    }
+
+    const normalizedHours = meridiem === "pm" ? (hours % 12) + 12 : hours % 12;
+    return `${String(normalizedHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  const colonMatch = TASK_TIME_INPUT_PATTERN.exec(cleaned);
+  if (colonMatch) {
+    const hours = Number(colonMatch[1]);
+    const minutes = Number(colonMatch[2]);
+    if (hours > 23 || minutes > 59) {
+      return null;
+    }
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  const compactMatch = TASK_TIME_COMPACT_INPUT_PATTERN.exec(cleaned);
+  if (compactMatch) {
+    const digits = compactMatch[1];
+    const hours = Number(digits.length === 3 ? digits.slice(0, 1) : digits.slice(0, 2));
+    const minutes = Number(digits.slice(-2));
+    if (hours > 23 || minutes > 59) {
+      return null;
+    }
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  return null;
 }
 
 export function parseTaskTimeToMinutes(value: string | null | undefined): number | null {
@@ -102,4 +187,24 @@ export function compareTaskStartTimes(
   }
 
   return 0;
+}
+
+type TimeOrderedTask = Pick<TaskItem, "start_time" | "end_time" | "position" | "created_at" | "id">;
+
+export function compareTaskItemsByTime<T extends TimeOrderedTask>(left: T, right: T): number {
+  const timeDelta = compareTaskStartTimes(left.start_time, right.start_time, left.end_time, right.end_time);
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+
+  if (left.position !== right.position) {
+    return left.position - right.position;
+  }
+
+  const createdAtDelta = right.created_at.localeCompare(left.created_at);
+  if (createdAtDelta !== 0) {
+    return createdAtDelta;
+  }
+
+  return right.id - left.id;
 }

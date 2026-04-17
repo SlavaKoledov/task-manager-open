@@ -25,6 +25,8 @@ function makeTask(id: number, dueDate: string | null, overrides: Partial<TaskIte
     description: null,
     description_blocks: [{ kind: "text", text: "" }],
     due_date: dueDate,
+    start_time: null,
+    end_time: null,
     reminder_time: null,
     repeat_config: null,
     repeat_until: null,
@@ -162,6 +164,19 @@ describe("task grouping helpers", () => {
     expect(grouped.doneTasks.map((task) => task.id)).toEqual([1]);
     expect(grouped.activeCount).toBe(2);
     expect(grouped.doneCount).toBe(1);
+  });
+
+  it("sorts timed tasks before untimed ones within the same section", () => {
+    const grouped = groupTasksWithDone([
+      makeTask(1, null, { priority: "urgent_important", position: 0 }),
+      makeTask(2, null, { priority: "urgent_important", start_time: "11:00", position: 1 }),
+      makeTask(3, null, { priority: "urgent_important", start_time: "09:00", end_time: "09:30", position: 2 }),
+      makeTask(4, null, { priority: "urgent_important", is_done: true, start_time: "10:00", position: 3 }),
+      makeTask(5, null, { priority: "urgent_important", is_done: true, position: 4 }),
+    ]);
+
+    expect(grouped.sections[0]?.tasks.map((task) => task.id)).toEqual([3, 2, 1]);
+    expect(grouped.doneTasks.map((task) => task.id)).toEqual([4, 5]);
   });
 
   it("preserves task order while splitting into All view columns and sections", () => {

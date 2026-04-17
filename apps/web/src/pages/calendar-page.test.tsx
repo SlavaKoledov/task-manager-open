@@ -95,6 +95,7 @@ function CalendarPageHarness({
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   getTasksMock.mockReset();
   updateTaskMock.mockReset();
   toggleTaskMock.mockReset();
@@ -141,6 +142,40 @@ describe("CalendarPageView", () => {
     expect(screen.queryAllByRole("gridcell")).toHaveLength(0);
     expect(screen.getByText("Mar 16 - 22, 2026")).not.toBeNull();
     expect(screen.getByTestId("calendar-week-split-handle")).not.toBeNull();
+  });
+
+  it("restores the last selected calendar view from localStorage and defaults safely", () => {
+    window.localStorage.setItem("task-manager.calendar.view", "garbage");
+
+    const props = {
+      tasks: [makeTask()],
+      lists: [
+        {
+          id: 5,
+          name: "Work",
+          color: "#2563eb",
+          position: 0,
+          created_at: "2026-03-18T08:00:00Z",
+          updated_at: "2026-03-18T08:00:00Z",
+        },
+      ],
+      showCompleted: true,
+      todayString: "2026-03-18",
+      onOpenTask: () => undefined,
+      onCreateTask: () => undefined,
+    } as const;
+
+    const view = render(<CalendarPageView {...props} />);
+
+    expect(screen.getByRole("button", { name: "Month" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    expect(window.localStorage.getItem("task-manager.calendar.view")).toBe("week");
+
+    view.unmount();
+    render(<CalendarPageView {...props} />);
+
+    expect(screen.getByRole("button", { name: "Week" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("shows task time badges in the selected day panel and week view", () => {

@@ -30,7 +30,7 @@ import {
   WEEKDAY_LETTERS,
   WEEKDAY_NAMES,
 } from "@/lib/task-repeat";
-import { validateTaskTimeRange } from "@/lib/task-time";
+import { normalizeTaskTimeInput, sanitizeTaskTimeInput, validateTaskTimeRange } from "@/lib/task-time";
 import type { TaskCustomRepeatConfig, TaskCustomRepeatUnit, TaskRepeat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -191,6 +191,69 @@ function getSelectedYearlyDateString(repeatConfig: TaskCustomRepeatConfig | null
   }
 
   return getLocalDateString(resolveSafeDate(2024, repeatConfig.month, repeatConfig.day));
+}
+
+function TaskTimeInput({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (nextValue: string) => void;
+}) {
+  const [inputValue, setInputValue] = useState(value);
+
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  const commitValue = useCallback(() => {
+    if (!inputValue.trim()) {
+      setInputValue("");
+      onChange("");
+      return;
+    }
+
+    const normalizedValue = normalizeTaskTimeInput(inputValue);
+    if (normalizedValue) {
+      setInputValue(normalizedValue);
+      onChange(normalizedValue);
+      return;
+    }
+
+    setInputValue(value);
+  }, [inputValue, onChange, value]);
+
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder="HH:MM"
+      value={inputValue}
+      disabled={disabled}
+      onChange={(event) => {
+        const rawValue = event.target.value;
+        const normalizedRawValue = normalizeTaskTimeInput(rawValue);
+        const sanitizedValue = sanitizeTaskTimeInput(rawValue);
+        const normalizedValue = normalizedRawValue ?? normalizeTaskTimeInput(sanitizedValue);
+        const nextDisplayValue = normalizedValue ?? sanitizedValue;
+
+        setInputValue(nextDisplayValue);
+
+        if (!nextDisplayValue) {
+          onChange("");
+        } else if (normalizedValue) {
+          onChange(normalizedValue);
+        }
+      }}
+      onBlur={commitValue}
+    />
+  );
 }
 
 function TaskDateRepeatControlInner({
@@ -579,13 +642,11 @@ function TaskDateRepeatControlInner({
                         <label className="text-xs font-medium text-muted-foreground" htmlFor="task-start-time">
                           Start time
                         </label>
-                        <Input
+                        <TaskTimeInput
                           id="task-start-time"
-                          type="time"
                           value={startTime}
                           disabled={!value}
-                          onChange={(event) => {
-                            const nextStartTime = event.target.value;
+                          onChange={(nextStartTime) => {
                             onStartTimeChange(nextStartTime);
                             if (!nextStartTime) {
                               onEndTimeChange("");
@@ -598,12 +659,11 @@ function TaskDateRepeatControlInner({
                         <label className="text-xs font-medium text-muted-foreground" htmlFor="task-end-time">
                           End time
                         </label>
-                        <Input
+                        <TaskTimeInput
                           id="task-end-time"
-                          type="time"
                           value={endTime}
                           disabled={!value || !startTime}
-                          onChange={(event) => onEndTimeChange(event.target.value)}
+                          onChange={onEndTimeChange}
                         />
                       </div>
                     </div>
@@ -646,11 +706,11 @@ function TaskDateRepeatControlInner({
                     </div>
 
                     <div className="space-y-2">
-                      <Input
-                        type="time"
+                      <TaskTimeInput
+                        id="task-reminder-time"
                         value={reminderTime}
                         disabled={!value}
-                        onChange={(event) => onReminderTimeChange(event.target.value)}
+                        onChange={onReminderTimeChange}
                       />
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -676,7 +736,7 @@ function TaskDateRepeatControlInner({
                       <p className="text-xs text-muted-foreground">
                         {!value
                           ? "Pick a due date before setting a reminder."
-                          : "Reminder time is stored with the task and reused by supported clients."}
+                          : "Reminder time is stored with the task in 24-hour HH:MM format."}
                       </p>
                     </div>
                   </div>

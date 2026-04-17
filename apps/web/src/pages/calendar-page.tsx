@@ -58,6 +58,7 @@ type CalendarPageViewProps = {
 
 type CalendarViewMode = "month" | "week";
 
+const CALENDAR_VIEW_STORAGE_KEY = "task-manager.calendar.view";
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_DAY_OCCURRENCE_LIMIT = 3;
 const MONTH_AGENDA_MIN_WIDTH = 240;
@@ -70,6 +71,15 @@ const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", { weekday: "short", month
 const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
 const WEEK_TITLE_MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const WEEK_TITLE_FULL_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+function getStoredCalendarViewMode(): CalendarViewMode {
+  if (typeof window === "undefined") {
+    return "month";
+  }
+
+  const storedValue = window.localStorage.getItem(CALENDAR_VIEW_STORAGE_KEY);
+  return storedValue === "month" || storedValue === "week" ? storedValue : "month";
+}
 
 function getDefaultMonthAgendaWidth(): number {
   if (typeof window === "undefined") {
@@ -311,7 +321,7 @@ export const CalendarPageView = memo(function CalendarPageView({
   onCreateTask,
 }: CalendarPageViewProps) {
   const todayDate = useMemo(() => parseLocalDateString(todayString) ?? new Date(), [todayString]);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(getStoredCalendarViewMode);
   const [anchorDate, setAnchorDate] = useState<Date>(todayDate);
   const [selectedDateString, setSelectedDateString] = useState(todayString);
   const [monthAgendaWidth, setMonthAgendaWidth] = useState(getDefaultMonthAgendaWidth);
@@ -359,6 +369,14 @@ export const CalendarPageView = memo(function CalendarPageView({
 
     return formatWeekTitle(visibleRange.start, visibleRange.end);
   }, [anchorDate, viewMode, visibleRange.end, visibleRange.start]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(CALENDAR_VIEW_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     if (viewMode !== "week") {

@@ -1,4 +1,5 @@
 import { addDays, getTomorrowDateString, parseLocalDateString } from "@/lib/date";
+import { compareTaskItemsByTime } from "@/lib/task-time";
 import type { AllTaskGroupId, TaskItem, TaskPriority, TaskSectionId, TaskTopLevelReorderScope, ViewMode } from "@/lib/types";
 export type SidebarTaskCounts = {
   all: number;
@@ -128,9 +129,13 @@ export function getTaskSectionId(task: Pick<TaskItem, "is_pinned" | "priority">)
   return task.is_pinned ? "pinned" : task.priority;
 }
 
+function sortTaskItems(tasks: TaskItem[]): TaskItem[] {
+  return [...tasks].sort(compareTaskItemsByTime);
+}
+
 export function groupTasksByPriority(tasks: TaskItem[]): TaskSection[] {
   const sections: TaskSection[] = [];
-  const pinnedTasks = tasks.filter((task) => task.is_pinned);
+  const pinnedTasks = sortTaskItems(tasks.filter((task) => task.is_pinned));
   const regularTasks = tasks.filter((task) => !task.is_pinned);
 
   if (pinnedTasks.length > 0) {
@@ -142,7 +147,7 @@ export function groupTasksByPriority(tasks: TaskItem[]): TaskSection[] {
   }
 
   for (const prioritySection of PRIORITY_SECTION_META) {
-    const sectionTasks = regularTasks.filter((task) => task.priority === prioritySection.id);
+    const sectionTasks = sortTaskItems(regularTasks.filter((task) => task.priority === prioritySection.id));
     if (sectionTasks.length === 0) {
       continue;
     }
@@ -155,6 +160,19 @@ export function groupTasksByPriority(tasks: TaskItem[]): TaskSection[] {
   }
 
   return sections;
+}
+
+function buildTaskCollectionFromSortedTasks(tasks: TaskItem[]): TaskCollection {
+  const activeTasks = tasks.filter((task) => !task.is_done);
+  const doneTasks = tasks.filter((task) => task.is_done);
+
+  return {
+    sections: groupTasksByPriority(activeTasks),
+    doneTasks,
+    activeCount: activeTasks.length,
+    doneCount: doneTasks.length,
+    totalCount: tasks.length,
+  };
 }
 
 export function taskMatchesTopLevelReorderScope(task: TaskItem, scope: TaskTopLevelReorderScope): boolean {
@@ -316,16 +334,7 @@ export function buildTopLevelTaskDropScope({
 }
 
 export function groupTasksWithDone(tasks: TaskItem[]): TaskCollection {
-  const activeTasks = tasks.filter((task) => !task.is_done);
-  const doneTasks = tasks.filter((task) => task.is_done);
-
-  return {
-    sections: groupTasksByPriority(activeTasks),
-    doneTasks,
-    activeCount: activeTasks.length,
-    doneCount: doneTasks.length,
-    totalCount: tasks.length,
-  };
+  return buildTaskCollectionFromSortedTasks(sortTaskItems(tasks));
 }
 
 export function buildSidebarTaskCounts(
@@ -397,11 +406,15 @@ export function groupTasksForAllView(tasks: TaskItem[], todayString: string): Al
     groups[classifyTaskDueDateGroup(task.due_date, todayString)].push(task);
   }
 
-  return ALL_TASK_GROUPS.map((group) => ({
-    ...group,
-    tasks: groups[group.id],
-    ...groupTasksWithDone(groups[group.id]),
-  }));
+  return ALL_TASK_GROUPS.map((group) => {
+    const sortedGroupTasks = sortTaskItems(groups[group.id]);
+
+    return {
+      ...group,
+      tasks: sortedGroupTasks,
+      ...buildTaskCollectionFromSortedTasks(sortedGroupTasks),
+    };
+  });
 }
 
 export function getVisibleTaskCollection(tasks: TaskItem[], showCompleted: boolean): TaskCollection {

@@ -170,6 +170,22 @@ describe("TaskDateRepeatControl", () => {
     expect(screen.queryByText("End time must be later than the start time.")).toBeNull();
   });
 
+  it("uses 24-hour HH:MM text inputs for task times and strips am/pm input", () => {
+    render(<TaskDateRepeatControlHarness initialValue="2026-03-16" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Mar 16/i }));
+
+    const startTimeInput = screen.getByLabelText("Start time") as HTMLInputElement;
+    const endTimeInput = screen.getByLabelText("End time") as HTMLInputElement;
+
+    expect(startTimeInput.type).toBe("text");
+    expect(endTimeInput.type).toBe("text");
+    expect(startTimeInput.placeholder).toBe("HH:MM");
+
+    fireEvent.change(startTimeInput, { target: { value: "3:45 PM" } });
+    expect(startTimeInput.value).toBe("15:45");
+  });
+
   it("restores saved custom yearly repeat state and allows month navigation plus date selection", async () => {
     render(
       <TaskDateRepeatControlHarness

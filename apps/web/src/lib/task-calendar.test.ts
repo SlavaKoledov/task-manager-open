@@ -185,6 +185,75 @@ describe("task calendar helpers", () => {
     ]);
   });
 
+  it("keeps only the base occurrence for completed recurring tasks", () => {
+    const range = getCalendarMonthRange(new Date(2026, 2, 1));
+    const occurrences = buildTaskOccurrencesInRange(
+      [
+        makeTask({
+          id: 5,
+          title: "Completed biweekly Thursday",
+          due_date: "2026-03-05",
+          is_done: true,
+          repeat: "custom",
+          repeat_config: {
+            interval: 2,
+            unit: "week",
+            skip_weekends: false,
+            weekdays: [4],
+            month_day: null,
+            month: null,
+            day: null,
+          },
+        }),
+      ],
+      range,
+    );
+
+    expect(
+      occurrences.map((occurrence) => ({
+        id: occurrence.task.id,
+        date: occurrence.dateString,
+        recurring: occurrence.isRecurring,
+      })),
+    ).toEqual([{ id: 5, date: "2026-03-05", recurring: false }]);
+  });
+
+  it("still projects future occurrences for active recurring tasks", () => {
+    const range = getCalendarMonthRange(new Date(2026, 2, 1));
+    const occurrences = buildTaskOccurrencesInRange(
+      [
+        makeTask({
+          id: 6,
+          title: "Active biweekly Thursday",
+          due_date: "2026-03-05",
+          repeat: "custom",
+          repeat_config: {
+            interval: 2,
+            unit: "week",
+            skip_weekends: false,
+            weekdays: [4],
+            month_day: null,
+            month: null,
+            day: null,
+          },
+        }),
+      ],
+      range,
+    );
+
+    expect(
+      occurrences.map((occurrence) => ({
+        id: occurrence.task.id,
+        date: occurrence.dateString,
+        recurring: occurrence.isRecurring,
+      })),
+    ).toEqual([
+      { id: 6, date: "2026-03-05", recurring: false },
+      { id: 6, date: "2026-03-19", recurring: true },
+      { id: 6, date: "2026-04-02", recurring: true },
+    ]);
+  });
+
   it("omits recurring occurrences after repeat_until", () => {
     const range = getCalendarMonthRange(new Date(2026, 2, 1));
     const occurrences = buildTaskOccurrencesInRange(

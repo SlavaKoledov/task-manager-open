@@ -203,7 +203,7 @@ export function buildTaskOccurrencesInRange(tasks: TaskItem[], range: CalendarRa
       });
     }
 
-    if (task.repeat === "none") {
+    if (task.repeat === "none" || task.is_done) {
       continue;
     }
 

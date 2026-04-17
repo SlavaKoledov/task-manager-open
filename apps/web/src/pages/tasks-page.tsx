@@ -396,6 +396,8 @@ export function TasksPage({
       if (task.repeat !== "none" && !task.is_done && updatedTask.is_done) {
         await queryClient.invalidateQueries({ queryKey: ["tasks"] });
       }
+
+      return updatedTask;
     },
     [queryClient],
   );
